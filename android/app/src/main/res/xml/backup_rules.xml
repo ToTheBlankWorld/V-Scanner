@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <!-- Exclude sensitive preferences -->
+    <exclude domain="sharedpref" path="guardian_settings.xml"/>
+    <!-- Include scan results -->
+    <include domain="database" path="vscanner_database"/>
+</full-backup-content>

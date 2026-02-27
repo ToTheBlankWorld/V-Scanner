@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Primary Colors -->
+    <color name="primary">#1B5E20</color>
+    <color name="primary_dark">#0D3B0F</color>
+    <color name="primary_light">#4CAF50</color>
+    <color name="secondary">#1565C0</color>
+    <color name="secondary_light">#42A5F5</color>
+    
+    <!-- Background Colors -->
+    <color name="background_light">#F5F5F5</color>
+    <color name="background_dark">#121212</color>
+    <color name="surface_light">#FFFFFF</color>
+    <color name="surface_dark">#1E1E1E</color>
+    
+    <!-- Text Colors -->
+    <color name="text_primary">#212121</color>
+    <color name="text_secondary">#757575</color>
+    <color name="text_primary_dark">#FFFFFF</color>
+    <color name="text_secondary_dark">#B3B3B3</color>
+    
+    <!-- Security/Risk Colors -->
+    <color name="security_green">#4CAF50</color>
+    <color name="security_blue">#2196F3</color>
+    <color name="danger_red">#F44336</color>
+    <color name="warning_orange">#FF9800</color>
+    <color name="caution_yellow">#FFC107</color>
+    <color name="info_blue">#03A9F4</color>
+    
+    <!-- Risk Level Colors -->
+    <color name="risk_high">#D32F2F</color>
+    <color name="risk_medium">#F57C00</color>
+    <color name="risk_low">#388E3C</color>
+    
+    <!-- Sensor Colors -->
+    <color name="sensor_camera">#E91E63</color>
+    <color name="sensor_microphone">#9C27B0</color>
+    <color name="sensor_location">#2196F3</color>
+    
+    <!-- UI Elements -->
+    <color name="card_background">#FFFFFF</color>
+    <color name="card_background_dark">#2C2C2C</color>
+    <color name="divider">#E0E0E0</color>
+    <color name="divider_dark">#424242</color>
+    <color name="ripple">#1F000000</color>
+    <color name="ripple_dark">#1FFFFFFF</color>
+    
+    <!-- Status Colors -->
+    <color name="status_active">#4CAF50</color>
+    <color name="status_inactive">#9E9E9E</color>
+    <color name="status_error">#F44336</color>
+    <color name="status_warning">#FF9800</color>
+    
+    <!-- Button Colors -->
+    <color name="button_primary">#1B5E20</color>
+    <color name="button_secondary">#757575</color>
+    <color name="button_danger">#D32F2F</color>
+    <color name="button_disabled">#BDBDBD</color>
+</resources>
