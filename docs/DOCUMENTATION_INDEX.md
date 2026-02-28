@@ -3,7 +3,7 @@
 ## 🎯 Quick Navigation
 
 ### For New Users
-1. **Start Here:** [USAGE.md](USAGE.md) - 5-minute quick start
+1. **Start Here:** [USAGE.md](USAGE.md) - Quick start & interactive menu guide
 2. **User Guide:** [SENSOR_MONITORING.md](SENSOR_MONITORING.md) - How Guardian works
 3. **Getting Started:** [DEPLOYMENT_CHECKLIST.md](DEPLOYMENT_CHECKLIST.md#device-setup) - Device setup
 
@@ -19,6 +19,20 @@
 
 ---
 
+## 🆕 Latest Updates (February 2026)
+
+### CLI Enhancements
+- **Automatic ADB Setup** - Platform Tools auto-downloaded and configured
+- **Interactive Menu System** - GEMINI-style UI with 10 options and animations
+- **Smart Device Selection** - Auto-detects single device, prompts for multiple
+- **Device Information Display** - 7-panel comprehensive device info viewer
+- **Real-time Monitoring** - Live hardware usage and sensor tracking
+- **Intelligent App Names** - Shows actual app names instead of activity names
+
+See [USAGE.md](USAGE.md) for complete menu documentation.
+
+---
+
 ## 📖 Full Documentation Set
 
 ### 1. **README.md** - PROJECT OVERVIEW
@@ -27,17 +41,16 @@
 📚 **Purpose:** Project introduction and high-level overview
 
 **Contains:**
-- Project description
-- Core features list
+- Project description with new features
+- Core features list (including latest CLI enhancements)
 - System requirements
 - Quick start instructions
 - Folder structure
 - Technology stack
-- Installation steps
 
 **When to Read:**
 - First time understanding the project
-- Quick overview of capabilities
+- Quick overview of all capabilities
 - Installation prerequisites
 
 ---

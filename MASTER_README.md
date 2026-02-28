@@ -27,7 +27,24 @@ V Scanner is a comprehensive mobile security application that scans Android devi
 - Configurable alert sensitivity
 - Daily statistics and trends visualization
 
-### 📊 **Dashboard & Analytics**
+### �️ **CLI Tool Enhancements (Python)**
+- **Automatic ADB Setup** - Automatically downloads and configures Android Platform Tools on first run
+- **Smart Device Selection** - Auto-detects connected devices, auto-selects single device, prompts for multiple
+- **Interactive Menu** - GEMINI-style UI with 10 options, animations, and styled output
+- **Device Information Panels** - Display comprehensive device metadata on startup
+- **Full Device Info Viewer** - 7-panel display showing all device identifiers:
+  - 🔧 Hardware details (model, manufacturer, brand, board)
+  - 🔐 System information (Android version, API level, kernel, security patch)
+  - 💾 Memory and storage metrics
+  - 🌐 Network & connectivity (IP, MAC, Bluetooth)
+  - 🔑 Device identifiers (IMEI, serial, phone number, IMSI)
+  - 🔨 Build information (fingerprint, display ID, bootloader)
+  - 🌍 Locale & timezone
+- **Real-time Hardware Monitoring** - Live CPU, RAM, camera, microphone, GPS usage tracking
+- **Advanced Sensor Monitoring** - Option 1 for live hardware usage, Option 2 for all sensor values with continuous updates
+- **Intelligent App Name Parsing** - Shows actual app names instead of activity names with cached quick lookup
+
+### �📊 **Dashboard & Analytics**
 - Security score calculation
 - Risk level classification
 - Today's sensor usage summary

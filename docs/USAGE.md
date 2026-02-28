@@ -3,243 +3,193 @@
 ## Overview
 
 V Scanner is a comprehensive mobile security toolkit consisting of:
-1. **CLI Tool** - Cross-platform Python scanner for analyzing Android apps via ADB
+1. **CLI Tool** - Interactive Python scanner with GEMINI-style UI
 2. **Android App** - Native app with vulnerability scanning and Privacy Guardian features
 
 ---
 
-## CLI Tool Usage
+## 🖥️ CLI Tool Usage
 
 ### Prerequisites
 
-- Python 3.8 or higher
-- ADB (Android Debug Bridge) installed and in PATH
-- Android device with USB debugging enabled
+- **Python 3.8+** (3.10+ recommended)
+- **Android device with USB debugging enabled**
+- **Internet connection** (for first-time ADB setup)
+- **Note:** ADB is automatically downloaded! No manual installation needed.
 
-### Installation
+### Installation & Startup
 
 ```bash
 cd cli
 pip install -r requirements.txt
+python main.py
 ```
 
-### Commands
+**On first run:**
+- The CLI will automatically download Android Platform Tools
+- ADB will be configured automatically
+- Then the interactive menu will appear
 
-#### List Installed Apps
-```bash
-python scanner.py list-apps
+### Menu System
+
+After startup, you'll see an interactive menu with 10 options:
+
+```
+ 1. 📲 List Applications
+ 2. 🔍 Analyze Single App
+ 3. 🔒 Full Device Scan
+ 4. ⚙️  Admin Operations
+ 5. 📡 Sensor Monitoring
+ 6. ℹ️  Full Device Info
+ 7. 📊 Demo Mode
+ 8. 🔄 Change Device
+ 9. ⚙️  Reconfigure ADB
+ 10. ❌ Exit
 ```
 
-Lists all installed apps on the connected device.
+### Menu Options Explained
 
-Options:
-- `--include-system` - Include system apps in the list
+#### Option 1: 📲 List Applications
+Lists all installed applications with their details.
+- Choose to include system apps or third-party only
+- Shows app name, package name
+- Total count displayed
 
-#### Analyze Single App
-```bash
-python scanner.py analyze com.example.app
-```
+#### Option 2: 🔍 Analyze Single App
+Performs detailed security analysis on a specific app.
+- Enter package name to analyze
+- Shows vulnerabilities and risks
+- Detailed permission analysis
 
-Performs detailed security analysis on a specific package.
+#### Option 3: 🔒 Full Device Scan
+Scans ALL installed apps and generates comprehensive security report.
+- Analyzes all applications
+- Professional report generation (HTML/JSON/TXT)
+- Risk classification
+- Saves to cli/reports/ directory
 
-Output includes:
-- Package information
-- Target SDK version assessment
-- Dangerous permissions analysis
-- Risk level calculation
+#### Option 4: ⚙️ Admin Operations
+Advanced administrative functions:
+- Pull APK files
+- Force stop applications
+- Uninstall applications
+- Open applications
+- View system logs
 
-#### Full Device Scan
-```bash
-python scanner.py scan
-```
+#### Option 5: 📡 Sensor Monitoring
+Real-time monitoring of device sensors and hardware.
 
-Scans all installed apps and generates a comprehensive report.
+**Option 5.1:** Live Hardware Usage
+- Real-time CPU usage
+- RAM tracking
+- Camera, Microphone, GPS detection
+- Continuous updates (2-second intervals)
 
-Options:
-- `--output [path]` - Output directory for reports (default: ./reports)
-- `--format [html|json|text]` - Report format (default: html)
-- `--include-system` - Include system apps in scan
+**Option 5.2:** All Sensor Values
+- Static sensor readings
+- Accelerometer, Gyroscope, Magnetometer
+- Temperature sensors
+- Continuous updates with details
 
-#### Demo Mode
-```bash
-python scanner.py demo
-```
+#### Option 6: ℹ️ Full Device Info
+Comprehensive device information with 7 panels:
 
-Runs a demonstration with sample data (no device required).
+- 🔧 **Hardware** - Model, Manufacturer, Board
+- 🔐 **System** - Android version, API, Security patch
+- 💾 **Memory/Storage** - RAM, storage metrics
+- 🌐 **Network** - IP, MAC, Bluetooth details
+- 🔑 **Identifiers** - IMEI, Serial, IMSI
+- 🔨 **Build** - Fingerprint, Display ID, Bootloader  
+- 🌍 **Locale** - Timezone, language settings
 
-### Example Workflow
+#### Option 7: 📊 Demo Mode
+Demonstration with sample data (no device required).
 
-```bash
-# Connect device and verify ADB connection
-adb devices
+#### Option 8: 🔄 Change Device
+Switch to a different connected device.
 
-# Run full security scan
-python scanner.py scan --output ./my_reports --format html
+#### Option 9: ⚙️ Reconfigure ADB
+Fix ADB connections or re-download tools.
 
-# Analyze specific app of concern
-python scanner.py analyze com.suspicious.app
-```
+#### Option 10: ❌ Exit
+Close the application.
+
+### Device Selection
+
+**On First Start:**
+- CLI auto-detects connected devices
+- 1 device found → auto-selects
+- >1 devices found → asks you to choose
+- 0 devices found → error message
+
+**Device Info Shown:**
+- Auto-displays 3-panel summary on selection
+- Shows hardware and system specs
 
 ---
 
-## Android App Usage
+## 📱 Android App Usage
 
 ### Installation
 
-1. Build the app using Android Studio or Gradle:
+1. Build:
    ```bash
    cd android
    ./gradlew assembleRelease
    ```
 
-2. Install the APK on your device:
+2. Install:
    ```bash
    adb install app/build/outputs/apk/release/app-release.apk
    ```
 
 ### Permissions Required
 
-The app requires these permissions:
-- **Query All Packages** - To scan installed apps
-- **Package Usage Stats** - For app usage monitoring (requires manual grant in Settings)
-- **Foreground Service** - For Privacy Guardian background monitoring
-- **Post Notifications** - For security alerts
+- **Query All Packages** - Scan for apps
+- **Package Usage Stats** - Usage data (manual grant)
+- **Foreground Service** - Background monitoring
+- **Post Notifications** - Alerts
 
 ### Features
 
 #### Dashboard
-- **Security Score** - Overall device security rating (0-100)
-- **Risk Summary** - Count of high/medium/low risk apps
-- **Recent Alerts** - Latest security notifications
-- **Sensor Usage** - Today's camera/mic/location access
+- Security score (0-100)
+- Risk summary
+- Recent alerts
+- Sensor usage stats
 
-#### Vulnerability Scanner
-1. Tap the **Scanner** tab
-2. Press **Start Scan** to analyze all installed apps
-3. View results sorted by risk level
-4. Filter by risk category (High/Medium/Low)
-5. Tap any app for detailed permission analysis
+#### Scanner
+- Analyze all apps
+- View risk classifications
+- Detailed reports
 
-#### Privacy Guardian
-1. Enable Guardian from the **Guardian** tab
-2. Configure which sensors to monitor:
-   - Camera
-   - Microphone
-   - Location
-3. Set alert preferences for background access
-4. View recent sensor access logs
+#### Guardian
+- Sensor monitoring
+- Alert configuration
+- Access logs
 
 #### Alerts
-- View all security and privacy alerts
-- Filter by alert type
-- Dismiss individual or all alerts
-- See which apps triggered each alert
+- Security notifications
+- Filter by type
+- Dismiss/review
 
 #### Settings
-- **Scanner Settings**
-  - Include/exclude system apps
-  - Enable auto-scan on app install
-- **Guardian Settings**
-  - Toggle individual sensor monitoring
-  - Configure background check intervals
-- **Data Management**
-  - Clear scan history
-  - Clear sensor logs
-  - Export data
+- Preferences
+- Data management
+- Permission control
 
 ---
 
-## Understanding Risk Levels
+## 🔍 Risk Levels
 
-### High Risk
-Apps with:
-- Very outdated target SDK (< API 23)
-- Multiple dangerous permissions (6+)
-- Camera + Microphone + Location access
-- SMS/Call log access
+**High Risk** - Outdated SDK (<API 23), 6+ dangerous permissions
 
-### Medium Risk
-Apps with:
-- Outdated target SDK (API 23-28)
-- Moderate dangerous permissions (3-5)
-- Some sensitive data access
+**Medium Risk** - Outdated SDK (API 23-28), 3-5 permissions
 
-### Low Risk
-Apps with:
-- Current target SDK (API 29+)
-- Minimal dangerous permissions (0-2)
-- Standard functionality permissions
+**Low Risk** - Recent SDK (API 29+), minimal permissions
 
 ---
 
-## Dangerous Permissions Reference
+## 📞 Support
 
-| Permission | Category | Risk Level |
-|------------|----------|------------|
-| CAMERA | Camera | High |
-| RECORD_AUDIO | Microphone | High |
-| ACCESS_FINE_LOCATION | Location | High |
-| READ_CONTACTS | Contacts | Medium |
-| READ_CALL_LOG | Phone | High |
-| READ_SMS | SMS | High |
-| READ_EXTERNAL_STORAGE | Storage | Medium |
-| BODY_SENSORS | Sensors | Medium |
-
----
-
-## Privacy Guardian Alerts
-
-### Alert Types
-
-1. **Background Access** - App accessed sensor while in background
-2. **Excessive Usage** - Unusually frequent sensor access
-3. **Suspicious Timing** - Sensor access at unusual hours (night)
-4. **New Permission** - App was granted new sensitive permission
-
-### Recommended Actions
-
-- Review apps with frequent alerts
-- Revoke unnecessary permissions
-- Consider uninstalling high-risk apps
-- Report suspicious behavior
-
----
-
-## Troubleshooting
-
-### CLI Issues
-
-**"No devices found"**
-- Ensure USB debugging is enabled
-- Check device is connected: `adb devices`
-- Try: `adb kill-server && adb start-server`
-
-**"Permission denied"**
-- Grant shell access: Enable USB debugging (Security settings) on device
-
-### App Issues
-
-**"Usage access required"**
-- Go to Settings > Apps > Special access > Usage access
-- Enable for V Scanner
-
-**Guardian not detecting accesses**
-- Ensure app has all required permissions
-- Check that Guardian service is running (notification visible)
-- Some accesses may not be detectable on all devices
-
----
-
-## Best Practices
-
-1. **Regular Scans** - Scan after installing new apps
-2. **Review Permissions** - Check why apps need specific permissions
-3. **Enable Guardian** - Monitor sensor access continuously
-4. **Act on Alerts** - Don't ignore high-risk warnings
-5. **Keep Updated** - Ensure apps target recent SDKs
-
----
-
-## Support
-
-For issues or feature requests, please open an issue on the project repository.
+For issues, visit the project repository.

@@ -12,6 +12,10 @@ android/local.properties
 android/captures/
 android/lint-baseline.xml
 
+# Platform Tools (Auto-downloaded by adb_setup)
+platform-tools/
+platform-tools/**/*
+
 # Python
 __pycache__/
 *.py[cod]
@@ -54,8 +58,9 @@ Thumbs.db
 *.iws
 *.ipr
 
-# Generated Reports
+# Generated Reports & Test Files
 cli/reports/
+cli/test5/
 android/build/reports/
 
 # Environment variables
