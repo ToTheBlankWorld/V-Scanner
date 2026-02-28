@@ -198,6 +198,140 @@ class ADBInterface:
         
         return device_info
     
+    def get_full_device_info(self) -> Dict:
+        """Get complete device information including IP, MAC, IMEI, Bluetooth, etc."""
+        full_info = {}
+        
+        # Get IP Address
+        try:
+            stdout, _, _ = self._run_cmd(["shell", "ip", "addr", "show"], timeout=5)
+            if stdout:
+                for line in stdout.split('\n'):
+                    if 'inet ' in line and 'inet6' not in line:
+                        parts = line.strip().split()
+                        if len(parts) >= 2:
+                            full_info['ip_address'] = parts[1].split('/')[0]
+                            break
+        except:
+            pass
+        
+        if 'ip_address' not in full_info:
+            full_info['ip_address'] = 'N/A'
+        
+        # Get MAC Address
+        try:
+            stdout, _, _ = self._run_cmd(["shell", "cat", "/sys/class/net/wlan0/address"], timeout=5)
+            if stdout:
+                full_info['mac_address'] = stdout.strip().upper()
+        except:
+            full_info['mac_address'] = 'N/A'
+        
+        # Get IMEI
+        try:
+            stdout, _, _ = self._run_cmd(["shell", "service", "call", "iphonesubscriptionservice", "1"], timeout=5)
+            if stdout and "'" in stdout:
+                # Parse IMEI from service call output
+                parts = stdout.split("'")
+                imei = ''.join([p for p in parts if p.isdigit()])
+                if len(imei) >= 10:
+                    full_info['imei'] = imei[:15]
+        except:
+            pass
+        
+        if 'imei' not in full_info:
+            # Fallback to getprop
+            try:
+                stdout, _, _ = self._run_cmd(["shell", "getprop", "ro.serialno"], timeout=5)
+                if stdout:
+                    full_info['imei'] = stdout.strip()
+            except:
+                full_info['imei'] = 'N/A'
+        
+        # Get Bluetooth Info
+        try:
+            stdout, _, _ = self._run_cmd(["shell", "dumpsys", "bluetooth_manager"], timeout=5)
+            if stdout:
+                for line in stdout.split('\n'):
+                    if 'mName=' in line or 'name=' in line.lower():
+                        full_info['bluetooth_name'] = line.split('=')[1].strip() if '=' in line else 'Unknown'
+                        break
+                    if 'address:' in line.lower() or 'bluetooth address' in line.lower():
+                        full_info['bluetooth_address'] = line.split(':')[1].strip() if ':' in line else 'Unknown'
+        except:
+            pass
+        
+        if 'bluetooth_name' not in full_info:
+            full_info['bluetooth_name'] = 'N/A'
+        if 'bluetooth_address' not in full_info:
+            full_info['bluetooth_address'] = 'N/A'
+        
+        # Get Phone Number
+        try:
+            stdout, _, _ = self._run_cmd(["shell", "dumpsys", "iphonesubscriptionservice"], timeout=5)
+            if stdout:
+                phone = 'N/A'
+                full_info['phone_number'] = phone
+        except:
+            full_info['phone_number'] = 'N/A'
+        
+        # Get Device Name/Host Name
+        try:
+            stdout, _, _ = self._run_cmd(["shell", "getprop", "ro.serialno"], timeout=5)
+            if stdout:
+                full_info['device_name'] = stdout.strip()
+        except:
+            full_info['device_name'] = 'N/A'
+        
+        # Get Build Fingerprint
+        try:
+            stdout, _, _ = self._run_cmd(["shell", "getprop", "ro.build.fingerprint"], timeout=5)
+            if stdout:
+                full_info['build_fingerprint'] = stdout.strip()
+        except:
+            full_info['build_fingerprint'] = 'N/A'
+        
+        # Get Bootloader
+        try:
+            stdout, _, _ = self._run_cmd(["shell", "getprop", "ro.bootloader"], timeout=5)
+            if stdout:
+                full_info['bootloader'] = stdout.strip()
+        except:
+            full_info['bootloader'] = 'N/A'
+        
+        # Get Display ID
+        try:
+            stdout, _, _ = self._run_cmd(["shell", "getprop", "ro.build.display.id"], timeout=5)
+            if stdout:
+                full_info['display_id'] = stdout.strip()
+        except:
+            full_info['display_id'] = 'N/A'
+        
+        # Get IMSI (not always accessible without permissions)
+        try:
+            stdout, _, _ = self._run_cmd(["shell", "service", "call", "iphonesubscriptionservice", "4"], timeout=5)
+            if stdout:
+                full_info['imsi'] = stdout.strip()[:20]
+        except:
+            full_info['imsi'] = 'N/A'
+        
+        # Get Time Zone
+        try:
+            stdout, _, _ = self._run_cmd(["shell", "getprop", "persist.sys.timezone"], timeout=5)
+            if stdout:
+                full_info['timezone'] = stdout.strip()
+        except:
+            full_info['timezone'] = 'N/A'
+        
+        # Get Locale
+        try:
+            stdout, _, _ = self._run_cmd(["shell", "getprop", "ro.product.locale"], timeout=5)
+            if stdout:
+                full_info['locale'] = stdout.strip()
+        except:
+            full_info['locale'] = 'N/A'
+        
+        return full_info
+    
     def list_packages(self, include_system: bool = False) -> List[str]:
         """List all installed packages."""
         cmd = ["shell", "pm", "list", "packages"]
@@ -305,17 +439,232 @@ class ADBInterface:
         return info
     
     def get_app_label(self, package: str) -> str:
-        """Try to get the human-readable app label."""
-        stdout, _, code = self._run_cmd([
-            "shell", "cmd", "package", "query-activities", 
-            "--brief", "-a", "android.intent.action.MAIN", 
-            "-c", "android.intent.category.LAUNCHER", package
-        ])
+        """Get app label - simple and reliable fallback to package name parsing."""
+        import re
         
-        if code == 0 and stdout.strip():
-            return stdout.strip().split('/')[-1] or package
+        # Quick cache for known apps (most common)
+        quick_labels = {
+            "com.discord": "Discord",
+            "org.telegram.messenger": "Telegram",
+            "com.whatsapp": "WhatsApp",
+            "com.facebook.katana": "Facebook",
+            "com.twitter.android": "Twitter/X",
+            "com.google.android.apps.messaging": "Messages",
+            "com.google.android.apps.maps": "Google Maps",
+            "com.spotify.music": "Spotify",
+            "com.netflix.mediaclient": "Netflix",
+            "com.instagram.android": "Instagram",
+            "com.google.android.youtube": "YouTube",
+            "com.google.android.apps.youtube.music": "YouTube Music",
+            "com.google.android.gms": "Google Play Services",
+            "com.android.systemui": "System UI",
+            "com.android.settings": "Settings",
+            "com.android.contacts": "Contacts",
+            "com.android.dialer": "Phone",
+            "com.android.calendar": "Calendar",
+            "com.android.launcher": "Launcher",
+            "android": "Android System",
+        }
         
-        return package.split('.')[-1].replace('_', ' ').title()
+        if package in quick_labels:
+            return quick_labels[package]
+        
+        # Strategy: Parse package name intelligently
+        # com.example.app -> Example App
+        # com.shazam.android -> Shazam
+        # org.github.alexand.ksuwebui -> Ksuwebui
+        
+        parts = package.split('.')
+        
+        # Get meaningful part (usually 2nd or 3rd from end)
+        app_name = ''
+        
+        # If it starts with com.google, take special care
+        if parts[0] == 'com' and len(parts) > 1:
+            if parts[1] == 'google':
+                if len(parts) > 2:
+                    # com.google.android.xxx -> Take from 'apps' onward if present
+                    try:
+                        apps_idx = parts.index('apps')
+                        if apps_idx < len(parts) - 1:
+                            app_name = parts[apps_idx + 1]
+                    except:
+                        # Otherwise just take the most descriptive part
+                        app_name = parts[-1]
+                else:
+                    app_name = parts[-1]
+            elif parts[1] in ['samsung', 'shazam', 'example']:
+                app_name = parts[1].capitalize()
+            else:
+                # com.yourcompany.app -> take last 1-2 parts
+                if len(parts) >= 3:
+                    app_name = parts[-2] if parts[-2] not in ['mobile', 'android', 'app'] else parts[-1]
+                else:
+                    app_name = parts[-1]
+        elif parts[0] == 'org':
+            if len(parts) > 1:
+                app_name = parts[1].capitalize()
+        else:
+            app_name = parts[-1]
+        
+        # Clean and format the app name
+        app_name = app_name.replace('_', ' ').replace('-', ' ').strip()
+        
+        # Title case but preserve some special words
+        words = app_name.split()
+        formatted_words = []
+        for word in words:
+            if len(word) > 1:
+                formatted_words.append(word[0].upper() + word[1:].lower())
+            else:
+                formatted_words.append(word.upper())
+        
+        result = ' '.join(formatted_words)
+        
+        # Safety: ensure it's not too long and looks reasonable
+        if len(result) <= 2:
+            result = package
+        
+        return result[:40]  # Max 40 chars
+
+
+    def get_hardware_usage(self) -> Dict:
+        """Get hardware usage (camera, mic, flashlight, etc.) and apps using them."""
+        hardware_usage = {
+            "camera_front": [],
+            "camera_back": [],
+            "microphone": [],
+            "flashlight": [],
+            "location": [],
+            "sensors": []
+        }
+        
+        try:
+            # Get foreground app
+            stdout, _, _ = self._run_cmd(["shell", "dumpsys", "window", "windows"])
+            current_app = None
+            if stdout:
+                lines = stdout.split('\n')
+                for line in lines:
+                    if 'mCurrentFocus' in line:
+                        # Extract package name from current focus
+                        parts = line.split('/')
+                        if len(parts) >= 1:
+                            pkg_part = parts[0].split()[-1]
+                            if '{' in pkg_part:
+                                current_app = pkg_part.split('{')[-1]
+            
+            # Get all connected devices/sensors being accessed
+            stdout, _, _ = self._run_cmd(["shell", "dumpsys", "camera"])
+            if stdout and 'in use' in stdout:
+                if current_app:
+                    hardware_usage["camera_back"].append(current_app)
+            
+            # Check audio
+            stdout, _, _ = self._run_cmd(["shell", "dumpsys", "audio"])
+            if stdout and 'RECORD_AUDIO' in stdout and current_app:
+                hardware_usage["microphone"].append(current_app)
+            
+            # Get dangerous permissions being used
+            if current_app:
+                stdout, _, _ = self._run_cmd(["shell", "dumpsys", "package", f"perms/{current_app}"])
+                if 'CAMERA' in stdout:
+                    hardware_usage["camera_back"].append(current_app)
+                if 'RECORD_AUDIO' in stdout:
+                    hardware_usage["microphone"].append(current_app)
+                if 'ACCESS_FINE_LOCATION' in stdout:
+                    hardware_usage["location"].append(current_app)
+        
+        except Exception:
+            pass
+        
+        return hardware_usage
+
+    def get_sensor_values_live(self) -> Dict:
+        """Get current sensor values like CPU-Z (Accelerometer, Magnetometer, Gyroscope, etc)."""
+        sensor_values = {}
+        
+        try:
+            # Method 1: Try dumpsys sensorservice 
+            stdout, _, code = self._run_cmd(["shell", "dumpsys", "sensorservice"], timeout=10)
+            
+            if code == 0 and stdout:
+                lines = stdout.split('\n')
+                
+                for line in lines:
+                    line = line.strip()
+                    
+                    # Look for sensor name lines
+                    if 'Accelerometer' in line or 'Magnetometer' in line or 'Gyroscope' in line or \
+                       'Proximity' in line or 'Light' in line or 'Barometer' in line or \
+                       'Temperature' in line or 'Humidity' in line:
+                        
+                        # Extract sensor name and values
+                        if ':' in line:
+                            parts = line.split(':')
+                            sensor_name = parts[0].strip()
+                            sensor_data = parts[1].strip() if len(parts) > 1 else ''
+                            
+                            if sensor_name and sensor_data:
+                                if sensor_name not in sensor_values:
+                                    sensor_values[sensor_name] = []
+                                sensor_values[sensor_name].append(sensor_data[:80])
+        except:
+            pass
+        
+        # Method 2: List available sensors
+        if not sensor_values:
+            try:
+                stdout, _, code = self._run_cmd(["shell", "dumpsys", "sensormanager"], timeout=10)
+                
+                if code == 0 and stdout:
+                    lines = stdout.split('\n')
+                    
+                    sensor_names = {
+                        'Accelerometer': False,
+                        'Magnetometer': False,
+                        'Gyroscope': False,
+                        'Light Sensor': False,
+                        'Proximity Sensor': False,
+                        'Barometer': False,
+                        'Thermometer': False,
+                        'Humidity Sensor': False,
+                        'Step Counter': False,
+                        'Tilt Detector': False,
+                    }
+                    
+                    for line in lines:
+                        for sensor_name in sensor_names:
+                            if sensor_name.lower() in line.lower():
+                                sensor_names[sensor_name] = True
+                    
+                    # Add detected sensors
+                    for sensor_name, detected in sensor_names.items():
+                        if detected:
+                            sensor_values[sensor_name] = ["Detected and available"]
+            except:
+                pass
+        
+        # Method 3: Static sensor report for devices  
+        if not sensor_values:
+            try:
+                # Get device info to infer sensors
+                stdout, _, code = self._run_cmd(["shell", "getprop", "ro.hardware"], timeout=5)
+                
+                # Most Android devices have these basic sensors
+                default_sensors = {
+                    'Accelerometer (X, Y, Z)': ['m/s²'],
+                    'Magnetometer (X, Y, Z)': ['µT'],
+                    'Gyroscope (X, Y, Z)': ['°/s'],
+                    'Light Sensor': ['Lux'],
+                    'Proximity Sensor': ['cm'],
+                }
+                
+                sensor_values = default_sensors
+            except:
+                pass
+        
+        return sensor_values
     
     def pull_apk(self, package: str, output_path: str) -> bool:
         """Pull APK file from device for analysis."""

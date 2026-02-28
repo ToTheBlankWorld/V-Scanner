@@ -2,6 +2,7 @@
 """
 V Scanner - Main Interactive CLI
 Automatically detects connected devices and provides an interactive menu
+GEMINI-Style beautiful terminal UI with automated ADB setup
 """
 
 import os
@@ -16,6 +17,12 @@ from rich import box
 
 from scanner import ADBInterface, VulnerabilityScanner
 from report_generator import ReportGenerator
+from adb_setup import get_adb_path, load_adb_config, save_adb_config, check_adb_valid
+from ui_styles import (
+    print_gradient_banner, print_startup_animation, print_main_menu,
+    print_device_selector_animation, print_success_message, print_error_message,
+    print_warning_message, print_info_message, print_footer, print_scan_complete_animation
+)
 
 console = Console()
 
@@ -33,18 +40,8 @@ def load_adb_config() -> Optional[str]:
                 saved_path = config.get("adb_path")
                 
                 # Verify the saved path still exists and is valid
-                if saved_path and os.path.exists(saved_path):
-                    # Test if it's still a valid ADB executable
-                    try:
-                        result = subprocess.run(
-                            [saved_path, "version"],
-                            capture_output=True,
-                            timeout=5
-                        )
-                        if result.returncode == 0:
-                            return saved_path
-                    except:
-                        pass
+                if saved_path and check_adb_valid(saved_path):
+                    return saved_path
     except:
         pass
     
@@ -65,71 +62,29 @@ ADB_PATH = None
 
 
 def find_adb() -> Optional[str]:
-    """Find ADB executable in PATH or ask user for path."""
+    """
+    Find or setup ADB executable.
+    Uses automatic setup from adb_setup module.
+    """
     global ADB_PATH
     
-    # First, try to load saved config
+    # Try to load saved config first
     saved_path = load_adb_config()
     if saved_path:
-        console.print(f"[green]✓ Using saved ADB config[/green]")
+        console.print(f"[green]✓ Using saved ADB configuration[/green]")
         ADB_PATH = saved_path
         return saved_path
     
-    # Try to find ADB in PATH
-    try:
-        result = subprocess.run(
-            ["adb", "version"],
-            capture_output=True,
-            timeout=5
-        )
-        if result.returncode == 0:
-            ADB_PATH = "adb"
-            save_adb_config("adb")
-            return "adb"
-    except FileNotFoundError:
-        pass
+    # Use automated setup
+    from adb_setup import get_adb_path as automated_get_adb
+    adb_path = automated_get_adb()
     
-    # ADB not in PATH, ask user for path
-    console.print(Panel(
-        "[yellow]⚠️  ADB not found in system PATH[/yellow]\n\n"
-        "Please provide the path to your adb.exe file.\n"
-        "It's usually located in:\n"
-        "[cyan]C:\\Users\\YourName\\AppData\\Local\\Android\\Sdk\\platform-tools\\adb.exe[/cyan]",
-        title="ADB Configuration (First Time Only)",
-        border_style="yellow"
-    ))
+    if adb_path:
+        ADB_PATH = adb_path
+        return adb_path
     
-    while True:
-        adb_path = console.input("\n[bold]Enter path to adb.exe: [/bold]")
-        
-        if not adb_path.strip():
-            console.print("[red]Path cannot be empty[/red]")
-            continue
-        
-        # Remove quotes if user included them
-        adb_path = adb_path.strip('"\'')
-        
-        # Check if file exists
-        if not os.path.exists(adb_path):
-            console.print(f"[red]File not found: {adb_path}[/red]")
-            continue
-        
-        # Test if it's valid ADB
-        try:
-            result = subprocess.run(
-                [adb_path, "version"],
-                capture_output=True,
-                timeout=5
-            )
-            if result.returncode == 0:
-                ADB_PATH = adb_path
-                save_adb_config(adb_path)
-                console.print(f"[green]✓ ADB configured and saved: {adb_path}[/green]")
-                return adb_path
-            else:
-                console.print("[red]This doesn't appear to be a valid adb executable[/red]")
-        except Exception as e:
-            console.print(f"[red]Error: {e}[/red]")
+    console.print("[red]✗ Failed to setup ADB[/red]")
+    return None
 
 
 def get_adb_interface(device: str = None) -> ADBInterface:
@@ -172,18 +127,16 @@ def select_device() -> Optional[str]:
     devices = get_available_devices()
     
     if not devices:
-        console.print(Panel(
-            "[red]❌ No Android devices found![/red]\n\n"
+        print_error_message(
+            "❌ No Devices Found",
             "Please ensure:\n"
             "• USB debugging is enabled on your device\n"
             "• Device is connected via USB cable\n"
-            "• Computer is authorized (tap 'Allow' on device)\n"
-            "• ADB is properly configured",
-            title="Connection Error",
-            border_style="red"
-        ))
+            "• Tap 'Allow' when prompted on device\n"
+            "• ADB is properly configured"
+        )
         
-        console.print("\n[yellow]Would you like to reconfigure ADB path?[/yellow]")
+        console.print("[yellow]Would you like to reconfigure ADB path?[/yellow]")
         console.print("[1] Yes, reconfigure ADB")
         console.print("[2] No, go back to menu")
         choice = console.input("\n[bold]Select: [/bold]")
@@ -199,27 +152,18 @@ def select_device() -> Optional[str]:
         console.print(f"[green]✓ Device found: {devices[0]}[/green]")
         return devices[0]
     
-    # Multiple devices - ask user to select
-    console.print("[cyan]Multiple devices detected:[/cyan]\n")
-    
-    table = Table(box=box.ROUNDED)
-    table.add_column("Option", style="cyan", width=5)
-    table.add_column("Device ID", style="green")
-    
-    for i, device in enumerate(devices, 1):
-        table.add_row(str(i), device)
-    
-    console.print(table)
+    # Multiple devices - show animated selection
+    print_device_selector_animation(devices)
     
     while True:
         try:
-            choice = int(console.input("\n[bold]Select device (enter number): [/bold]"))
+            choice = int(console.input("\n[bold cyan]Select device (enter number): [/bold cyan]"))
             if 1 <= choice <= len(devices):
                 return devices[choice - 1]
             else:
-                console.print("[red]Invalid selection![/red]")
+                console.print("[red]❌ Invalid selection![/red]")
         except ValueError:
-            console.print("[red]Please enter a valid number[/red]")
+            console.print("[red]❌ Please enter a valid number[/red]")
 
 
 def display_device_info(device: str):
@@ -616,6 +560,97 @@ def display_device_info_panel(device: str):
         console.print(f"[yellow]⚠️ Some device information unavailable: {str(e)[:75]}[/yellow]")
 
 
+def display_full_device_info(device: str):
+    """Display complete device information including network, identifiers, etc."""
+    adb = get_adb_interface(device)
+    
+    console.print("\n[bold cyan]📱 Complete Device Information[/bold cyan]\n")
+    
+    try:
+        # Get basic info
+        basic_info = adb.get_comprehensive_device_info()
+        
+        # Display Hardware
+        console.print(Panel(
+            f"[bold]Model:[/bold] {basic_info['device_model']}\n"
+            f"[bold]Manufacturer:[/bold] {basic_info['manufacturer']}\n"
+            f"[bold]Brand:[/bold] {basic_info['brand']}\n"
+            f"[bold]Board:[/bold] {basic_info['board']}\n"
+            f"[bold]Hardware:[/bold] {basic_info['hardware']}\n"
+            f"[bold]Build ID:[/bold] {basic_info['build_id']}",
+            title="🔧 Device Hardware",
+            border_style="cyan"
+        ))
+        
+        # Display System Info
+        console.print(Panel(
+            f"[bold]Android Version:[/bold] {basic_info['android_version']}\n"
+            f"[bold]API Level:[/bold] {basic_info['api_level']}\n"
+            f"[bold]Kernel Version:[/bold] {basic_info['kernel_version']}\n"
+            f"[bold]Security Patch:[/bold] {basic_info['security_patch']}\n"
+            f"[bold]Root Status:[/bold] {basic_info['is_rooted']}",
+            title="🔐 System Information",
+            border_style="blue"
+        ))
+        
+        # Display Memory & Storage
+        console.print(Panel(
+            f"[bold]Total RAM:[/bold] {basic_info['total_ram']}\n"
+            f"[bold]Available RAM:[/bold] {basic_info['available_ram']}\n"
+            f"[bold]Internal Storage:[/bold] {basic_info['internal_storage']}\n"
+            f"[bold]External Storage:[/bold] {basic_info['external_storage']}",
+            title="💾 Memory & Storage",
+            border_style="yellow"
+        ))
+        
+        # Get full device info
+        full_info = adb.get_full_device_info()
+        
+        # Display Network & Connectivity
+        console.print(Panel(
+            f"[bold]IP Address:[/bold] {full_info.get('ip_address', 'N/A')}\n"
+            f"[bold]MAC Address:[/bold] {full_info.get('mac_address', 'N/A')}\n"
+            f"[bold]Bluetooth Name:[/bold] {full_info.get('bluetooth_name', 'N/A')}\n"
+            f"[bold]Bluetooth Address:[/bold] {full_info.get('bluetooth_address', 'N/A')}",
+            title="🌐 Network & Connectivity",
+            border_style="magenta"
+        ))
+        
+        # Display Identifiers
+        console.print(Panel(
+            f"[bold]IMEI:[/bold] {full_info.get('imei', 'N/A')}\n"
+            f"[bold]Serial Number:[/bold] {full_info.get('device_name', 'N/A')}\n"
+            f"[bold]Phone Number:[/bold] {full_info.get('phone_number', 'N/A')}\n"
+            f"[bold]IMSI:[/bold] {full_info.get('imsi', 'N/A')}",
+            title="🔑 Device Identifiers",
+            border_style="green"
+        ))
+        
+        # Display Build & Version Info
+        console.print(Panel(
+            f"[bold]Build Fingerprint:[/bold] {full_info.get('build_fingerprint', 'N/A')}\n"
+            f"[bold]Display ID:[/bold] {full_info.get('display_id', 'N/A')}\n"
+            f"[bold]Bootloader:[/bold] {full_info.get('bootloader', 'N/A')}",
+            title="🔨 Build Information",
+            border_style="red"
+        ))
+        
+        # Display Locale & Time
+        console.print(Panel(
+            f"[bold]Timezone:[/bold] {full_info.get('timezone', 'N/A')}\n"
+            f"[bold]Locale:[/bold] {full_info.get('locale', 'N/A')}",
+            title="🌍 Locale & Time",
+            border_style="cyan"
+        ))
+        
+        console.print("\n[dim]Press Enter to return to main menu...[/dim]")
+        console.input()
+        
+    except Exception as e:
+        console.print(f"[red]❌ Error getting device information: {str(e)[:100]}[/red]")
+        console.input("[dim]Press Enter to continue...[/dim]")
+
+
 def sensors_menu(device: str):
     """Sensors monitoring submenu."""
     
@@ -625,8 +660,10 @@ def sensors_menu(device: str):
         console.print("[bold cyan]📡 Sensor Monitoring[/bold cyan]")
         console.print("="*50 + "\n")
         
-        console.print("[1] 🔴 Current Live System Monitor")
-        console.print("[2] 📊 All Physical Sensors")
+        console.print("[1] 🔴 Live Hardware Usage")
+        console.print("    (Camera, Microphone, Location, etc.)")
+        console.print("[2] 📊 All Sensor Values")
+        console.print("    (Accelerometer, Magnetometer, Gyroscope, etc.)")
         console.print("[3] 🔙 Back to Main Menu")
         
         choice = console.input("\n[bold]Select option (1-3): [/bold]")
@@ -645,121 +682,257 @@ def sensors_menu(device: str):
 
 
 def display_live_sensors(device: str):
-    """Display live sensor readings (accelerometer, gyroscope, magnetometer, etc) like CPU-Z."""
+    """Display ACTIVE hardware usage in real-time - continuously updates until user stops."""
     adb = get_adb_interface(device)
     
-    console.print("\n[bold cyan]📡 Live Sensor Readings...[/bold cyan]\n")
+    console.print("\n[bold cyan]🔴 Live Hardware Usage Monitor[/bold cyan]")
+    console.print("[dim cyan]Press Ctrl+C or type 'q' to exit | Real-time continuous monitoring[/dim cyan]\n")
+    
+    import time
+    import os
     
     try:
-        sensors = adb.get_live_sensor_readings()
-        
-        if not sensors or len(sensors) == 0:
-            console.print("[yellow]⚠️ No active sensor readings available on device.[/yellow]")
-            console.print("[dim]Try moving the device or activating apps to trigger sensor events.[/dim]")
-            return
-        
-        console.print(f"[bold cyan]Found {len(sensors)} active sensors[/bold cyan]\n")
-        
-        # Display each sensor with its readings
-        for i, sensor in enumerate(sensors, 1):
-            sensor_name = sensor.get('full_name', sensor.get('name', 'Unknown'))
+        while True:
+            # Clear previous output (optional - comment out if you want scrolling)
+            # os.system('cls' if os.name == 'nt' else 'clear')
             
-            # Build sensor display
-            display_text = f"[cyan]{i}. {sensor_name}[/cyan]"
+            console.print("\n[bold cyan]🔴 Live Hardware Usage Monitor[/bold cyan]")
+            console.print("[dim cyan]Real-time detection of active hardware access...[/dim cyan]")
+            console.print("[dim]Last update: " + time.strftime("%H:%M:%S") + "[/dim]\n")
             
-            # Add sensor values if available
-            values = sensor.get('values', [])
-            if values:
-                for value in values:
-                    display_text += f"\n  [magenta]{value}[/magenta]"
+            # Get current foreground app
+            stdout, _, _ = adb._run_cmd(["shell", "dumpsys", "window", "windows"], timeout=5)
+            current_app = None
+            current_app_name = None
             
-            console.print(display_text)
+            if stdout:
+                lines = stdout.split('\n')
+                for line in lines:
+                    if 'mCurrentFocus' in line or 'mFocusedApp' in line:
+                        parts = line.split('/')
+                        if len(parts) >= 1:
+                            pkg_part = parts[0].split()[-1]
+                            if '{' in pkg_part:
+                                current_app = pkg_part.split('{')[-1]
+                            elif ' ' in pkg_part:
+                                current_app = pkg_part.split()[-1]
+                            else:
+                                current_app = pkg_part
+                            
+                            if current_app:
+                                try:
+                                    current_app_name = adb.get_app_label(current_app)
+                                except:
+                                    current_app_name = current_app
+                                break
+            
+            # Display current foreground app
+            if current_app:
+                console.print(Panel(
+                    f"[bold cyan]🎯 App in Focus: [/bold cyan][bold yellow]{current_app_name}[/bold yellow]\n"
+                    f"[dim]({current_app})[/dim]",
+                    border_style="cyan",
+                    padding=(1, 2)
+                ))
+            else:
+                console.print(Panel(
+                    "[yellow]⚠️ Unable to determine current app[/yellow]",
+                    border_style="yellow",
+                    padding=(1, 1)
+                ))
+            
             console.print()
-        
-        # Show system monitoring as reference
-        console.print("\n" + "="*60)
-        console.print("[bold cyan]System Monitoring (Reference)[/bold cyan]\n")
-        
-        monitoring = adb.get_system_monitoring()
-        
-        # CPU Info
-        cpu_info = f"[bold]CPU:[/bold] {monitoring['cpu']['model']} ({monitoring['cpu']['cores']} cores)"
-        console.print(cpu_info)
-        
-        # Memory Info
-        memory = monitoring['memory']
-        mem_info = f"[bold]Memory:[/bold] {memory['percentage']} ({memory['available']} available)"
-        console.print(mem_info)
-        
-        # Battery Info
-        battery = monitoring['battery']
-        battery_info = f"[bold]Battery:[/bold] {battery['level']} ({battery['status']})"
-        console.print(battery_info)
-        
+            
+            # ===== DETECT ACTIVE CAMERA USAGE =====
+            console.print("[bold magenta]📹 Camera Status[/bold magenta]")
+            
+            camera_apps = []
+            try:
+                stdout, _, _ = adb._run_cmd(["shell", "dumpsys", "camera"], timeout=5)
+                if stdout:
+                    lines = stdout.split('\n')
+                    for line in lines:
+                        line_lower = line.lower()
+                        # Look for camera in use indicators
+                        if any(keyword in line_lower for keyword in ['in use', 'owner', 'client', 'recording', 'preview']):
+                            # Extract package name - look for com.xxx.xxx pattern
+                            import re
+                            matches = re.findall(r'([a-z0-9][a-z0-9\._]*[a-z0-9])', line_lower)
+                            for match in matches:
+                                if match.count('.') >= 2 and not any(x in match for x in ['camera', 'hal', 'api', 'v']):
+                                    if match not in camera_apps and match != 'com.android':
+                                        camera_apps.append(match)
+            except Exception as e:
+                pass
+            
+            # Additional check: look for camera process via ps
+            if not camera_apps:
+                try:
+                    stdout, _, _ = adb._run_cmd(["shell", "ps", "-A"], timeout=5)
+                    if stdout and 'camera' in stdout.lower():
+                        lines = stdout.split('\n')
+                        for line in lines:
+                            if 'camera' in line.lower():
+                                import re
+                                matches = re.findall(r'([a-z0-9][a-z0-9\._]*camera[a-z0-9\._]*)', line.lower())
+                                for match in matches:
+                                    if match.count('.') >= 1:
+                                        camera_apps.append(match)
+                except:
+                    pass
+            
+            # Check lsof for camera access
+            if not camera_apps:
+                try:
+                    stdout, _, _ = adb._run_cmd(["shell", "lsof", "/dev/video*"], timeout=5)
+                    if stdout:
+                        lines = stdout.split('\n')
+                        for line in lines:
+                            import re
+                            matches = re.findall(r'([a-z0-9][a-z0-9\._]*\.camera[a-z0-9]*)', line.lower())
+                            for match in matches:
+                                if match not in camera_apps:
+                                    camera_apps.append(match)
+                except:
+                    pass
+            
+            if camera_apps:
+                for pkg in camera_apps[:5]:
+                    try:
+                        # Clean package name
+                        pkg = pkg.strip('.')
+                        app_name = adb.get_app_label(pkg)
+                        console.print(f"  [bold red]🔴 ACTIVE[/bold red] {app_name} [dim]({pkg})[/dim]")
+                    except:
+                        pass
+            else:
+                console.print("  [dim]⚪ No active camera usage[/dim]")
+            
+            console.print()
+            
+            # ===== DETECT ACTIVE MICROPHONE USAGE =====
+            console.print("[bold magenta]🎤 Microphone Status[/bold magenta]")
+            
+            mic_apps = []
+            try:
+                stdout, _, _ = adb._run_cmd(["shell", "dumpsys", "audio"], timeout=5)
+                if stdout:
+                    lines = stdout.split('\n')
+                    for line in lines:
+                        line_lower = line.lower()
+                        if any(keyword in line_lower for keyword in ['focus holder', 'mixin', 'record', 'stream in', 'active', 'recorder']):
+                            # Extract package
+                            import re
+                            matches = re.findall(r'([a-z0-9][a-z0-9\._]*[a-z0-9](?:\.voice|\.record|\.audio)?)', line_lower)
+                            for match in matches:
+                                if match.count('.') >= 1 and len(match) > 5:
+                                    if match not in mic_apps and not any(x in match for x in ['system', 'media', 'api']):
+                                        mic_apps.append(match)
+            except:
+                pass
+            
+            if mic_apps:
+                for pkg in mic_apps[:5]:
+                    try:
+                        pkg = pkg.strip('.')
+                        app_name = adb.get_app_label(pkg)
+                        console.print(f"  [bold red]🔴 ACTIVE[/bold red] {app_name} [dim]({pkg})[/dim]")
+                    except:
+                        pass
+            else:
+                console.print("  [dim]⚪ No active microphone usage[/dim]")
+            
+            console.print()
+            
+            # ===== DETECT ACTIVE GPS/LOCATION USAGE =====
+            console.print("[bold magenta]📍 Location (GPS) Status[/bold magenta]")
+            
+            gps_apps = []
+            try:
+                stdout, _, _ = adb._run_cmd(["shell", "dumpsys", "location"], timeout=5)
+                if stdout:
+                    lines = stdout.split('\n')
+                    for line in lines:
+                        line_lower = line.lower()
+                        if any(keyword in line_lower for keyword in ['gps', 'location', 'fix', 'request', 'active']):
+                            import re
+                            matches = re.findall(r'([a-z0-9][a-z0-9\._]*[a-z0-9])', line_lower)
+                            for match in matches:
+                                if match.count('.') >= 2 and 'location' not in match and 'gps' not in match:
+                                    if match not in gps_apps:
+                                        gps_apps.append(match)
+            except:
+                pass
+            
+            if gps_apps:
+                for pkg in gps_apps[:5]:
+                    try:
+                        pkg = pkg.strip('.')
+                        app_name = adb.get_app_label(pkg)
+                        console.print(f"  [bold red]🔴 ACTIVE[/bold red] {app_name} [dim]({pkg})[/dim]")
+                    except:
+                        pass
+            else:
+                console.print("  [dim]⚪ No active location usage[/dim]")
+            
+            console.print()
+            console.print("[bold cyan]📊 Summary[/bold cyan]")
+            console.print(f"  Camera apps: {len(camera_apps)} active")
+            console.print(f"  Mic apps: {len(mic_apps)} active")
+            console.print(f"  GPS apps: {len(gps_apps)} active")
+            
+            if not (camera_apps or mic_apps or gps_apps):
+                console.print("\n[green]✓ No suspicious hardware access detected[/green]")
+            else:
+                console.print("\n[yellow]⚠️ Apps are actively using hardware[/yellow]")
+            
+            console.print("\n[dim][Press Ctrl+C to exit][/dim]")
+            
+            # Wait before next update
+            time.sleep(2)
+    
+    except KeyboardInterrupt:
+        console.print("\n\n[bold cyan]✓ Monitoring stopped[/bold cyan]")
     except Exception as e:
-        console.print(f"[red]❌ Error retrieving sensor data: {str(e)[:100]}[/red]")
-        console.print("[dim]Ensure ADB connection is active and device sensors are accessible.[/dim]")
+        console.print(f"[red]❌ Error: {str(e)[:100]}[/red]")
+        console.print("[dim]Ensure ADB connection is active.[/dim]")
+
 
 
 def display_all_sensors(device: str):
-    """Display all available sensors on the device."""
+    """Display all sensor values like CPU-Z (Accelerometer, Magnetometer, Gyroscope, etc)."""
     adb = get_adb_interface(device)
     
-    console.print("\n[bold cyan]📊 Fetching All Physical Sensors...[/bold cyan]\n")
+    console.print("\n[bold cyan]📊 All Sensor Values (CPU-Z Style)[/bold cyan]\n")
     
     try:
-        sensors = adb.get_all_sensors()
+        sensor_values = adb.get_sensor_values_live()
         
-        if not sensors:
-            console.print("[yellow]⚠️ No hardware sensors detected on device[/yellow]")
-            console.print("[dim]This may be normal for some Android devices or if dumpsys is unavailable.[/dim]")
+        if not sensor_values:
+            console.print("[yellow]⚠️ No sensor data available[/yellow]")
+            console.print("[dim]Try moving the device to trigger sensor readings[/dim]")
             return
         
-        console.print(f"[bold]Found {len(sensors)} physical sensors[/bold]\n")
+        console.print(f"[bold cyan]Found {len(sensor_values)} sensors[/bold cyan]\n")
         
-        table = Table(title="Available Physical Sensors", box=box.ROUNDED)
-        table.add_column("#", style="dim", width=4)
-        table.add_column("Sensor Name", style="cyan")
-        table.add_column("Type/Vendor", style="green")
+        # Display sensors in organized table format
+        table = Table(box=box.ROUNDED, border_style="cyan")
+        table.add_column("Sensor Type", style="magenta", width=30)
+        table.add_column("Values", style="green")
         
-        for i, sensor in enumerate(sensors, 1):
-            name = sensor.get("name", "Unknown")
-            details = sensor.get("details", {})
-            
-            # Get vendor and type
-            vendor = details.get("vendor", "")
-            sensor_type = details.get("type", "")
-            
-            type_info = f"{sensor_type}" + (f" ({vendor})" if vendor else "")
-            
-            table.add_row(str(i), name, type_info or "[dim]Unknown[/dim]")
+        for sensor_name, values in sensor_values.items():
+            if values:  # Only show if has values
+                value_str = '\n'.join(values[:3]) if values else "No data"
+                table.add_row(sensor_name, value_str)
         
         console.print(table)
         
-        # Show detailed info for selected sensor
-        try:
-            sensor_num = int(console.input("\n[bold]Enter sensor number for details (or 0 to skip): [/bold]"))
-            
-            if 1 <= sensor_num <= len(sensors):
-                selected = sensors[sensor_num - 1]
-                details = selected.get("details", {})
-                
-                detail_text = f"[bold]Name:[/bold] {selected.get('name', 'Unknown')}\n\n"
-                if details:
-                    detail_text += "[bold]Specifications:[/bold]\n"
-                    detail_text += "\n".join([f"  • [bold]{k.title()}:[/bold] {v}" for k, v in details.items()])
-                
-                console.print(Panel(
-                    detail_text,
-                    title="📡 Sensor Details",
-                    border_style="cyan"
-                ))
-        except ValueError:
-            pass
-            
+        console.print("\n[dim cyan]Note: Sensor values are continuously read from device.[/dim cyan]")
+        console.print("[dim cyan]Move your device to see accelerometer, gyroscope, and magnetometer updates.[/dim cyan]")
+    
     except Exception as e:
-        console.print(f"[red]❌ Error retrieving sensors: {str(e)[:100]}[/red]")
-        console.print("[dim]Ensure ADB connection is active and device has dumpsys sensormanager available.[/dim]")
+        console.print(f"[red]❌ Error getting sensor values: {str(e)[:100]}[/red]")
+        console.print("[dim]Ensure ADB connection is active and device has sensors.[/dim]")
 
 
 def admin_operations_menu(device: str):
@@ -816,57 +989,46 @@ def admin_operations_menu(device: str):
 def main_menu():
     """Display main interactive menu."""
     while True:
-        console.print("\n" + "="*50)
-        console.print("[bold cyan]🔒 V Scanner - Mobile Security Scanner[/bold cyan]")
-        console.print("="*50 + "\n")
+        print_main_menu()
         
-        console.print("[bold]Main Menu:[/bold]\n")
-        console.print("[1] 📱 Select/Change Device")
-        console.print("[2] 📲 List Installed Apps")
-        console.print("[3] 🔍 Analyze Single App")
-        console.print("[4] 🔒 Full Device Scan")
-        console.print("[5] ⚙️  Admin Operations")
-        console.print("[6] � Sensors")
-        console.print("[7] 📺 Demo Mode (no device needed)")
-        console.print("[8] ⚙️  Reconfigure ADB Path")
-        console.print("[9] ❌ Exit")
-        
-        choice = console.input("\n[bold]Select option (1-9): [/bold]")
+        choice = console.input("[bold cyan]Select option (1-10): [/bold cyan]")
         
         if choice == "1":
-            device = select_device()
-            if device:
-                display_device_info(device)
-                return device
-        
-        elif choice == "2":
             return "list"
         
-        elif choice == "3":
+        elif choice == "2":
             return "analyze"
         
-        elif choice == "4":
+        elif choice == "3":
             return "scan"
         
-        elif choice == "5":
+        elif choice == "4":
             return "admin"
         
-        elif choice == "6":
+        elif choice == "5":
             return "sensors"
+        
+        elif choice == "6":
+            return "full_device_info"
         
         elif choice == "7":
             demo_mode()
         
         elif choice == "8":
-            console.print("\n[cyan]Reconfiguring ADB path...[/cyan]")
-            find_adb()
+            return "change_device"
         
         elif choice == "9":
-            console.print("\n[cyan]👋 Goodbye![/cyan]")
+            console.print("\n[cyan]Reconfiguring ADB path...[/cyan]")
+            from adb_setup import interactive_adb_setup
+            interactive_adb_setup()
+        
+        elif choice == "10":
+            print_footer()
             sys.exit(0)
         
         else:
-            console.print("[red]Invalid choice[/red]")
+            console.print("[red]❌ Invalid choice. Please select 1-10.[/red]")
+            console.input("[dim]Press Enter to continue...[/dim]")
 
 
 def _display_app_report(report):
@@ -968,48 +1130,53 @@ def _display_high_risk_apps(full_report):
 
 def main():
     """Main entry point."""
-    console.print(Panel(
-        "[bold cyan]🔒 V Scanner v1.0[/bold cyan]\n"
-        "[yellow]Mobile App Security Vulnerability Scanner[/yellow]",
-        border_style="cyan",
-        padding=(1, 2)
-    ))
+    # Display beautiful banner
+    print_gradient_banner()
+    
+    # Run startup animation
+    print_startup_animation()
     
     # Configure ADB
-    console.print("\n[cyan]🔍 Configuring ADB...[/cyan]")
+    console.print("\n[cyan]⚙️  Configuring Android Debug Bridge...[/cyan]")
     adb_result = find_adb()
     
     if not adb_result:
-        console.print("[red]Error: Could not configure ADB[/red]")
+        print_error_message("❌ ADB Configuration Failed", "Could not setup or find ADB")
         sys.exit(1)
     
     console.print(f"[green]✓ ADB ready: {adb_result}[/green]")
     
-    console.print("\n[cyan]🔍 Checking for connected Android devices...[/cyan]\n")
+    console.print("\n[cyan]🔍 Scanning for Android devices...[/cyan]\n")
     
     devices = get_available_devices()
     
     if not devices:
-        console.print(Panel(
-            "[red]❌ No devices detected![/red]\n\n"
+        print_warning_message(
+            "⚠️ No Devices Detected",
             "Please ensure:\n"
             "• USB debugging is enabled on your device\n"
             "• Device is physically connected via USB\n"
             "• Tap 'Allow' when prompted on device\n"
-            "• ADB is properly installed",
-            title="No Device Found",
-            border_style="red"
-        ))
-        console.print("\n[yellow]You can still use Demo Mode to see how the scanner works[/yellow]\n")
+            "• ADB is properly installed\n\n"
+            "You can still use Demo Mode to see how the scanner works"
+        )
+        current_device = None
+    elif len(devices) == 1:
+        # Auto-select if only one device
+        current_device = devices[0]
+        console.print(f"[green]✓ Auto-selected device: {current_device}[/green]\n")
     else:
+        # Ask user to select if multiple devices
         console.print(f"[green]✓ Found {len(devices)} device(s)[/green]\n")
+        current_device = select_device()
+        if not current_device:
+            current_device = None
     
-    current_device = None
     device_info_shown = False
     
     while True:
         if current_device:
-            console.print(f"\n[green]Device selected: {current_device}[/green]\n")
+            console.print(f"\n[bold green]📱 Device: {current_device}[/bold green]\n")
             
             # Display device info only once when device is first selected
             if not device_info_shown:
@@ -1020,6 +1187,7 @@ def main():
         
         if menu_choice == "list":
             if not current_device:
+                console.print("[yellow]⚠️ No device selected. Please select a device.[/yellow]")
                 current_device = select_device()
                 if not current_device:
                     continue
@@ -1028,6 +1196,7 @@ def main():
         
         elif menu_choice == "analyze":
             if not current_device:
+                console.print("[yellow]⚠️ No device selected. Please select a device.[/yellow]")
                 current_device = select_device()
                 if not current_device:
                     continue
@@ -1055,12 +1224,27 @@ def main():
                 current_device = select_device()
                 if not current_device:
                     continue
-                device_info_shown = False  # Reset flag for new device
+                device_info_shown = False
             sensors_menu(current_device)
         
-        elif menu_choice and menu_choice != "list" and menu_choice != "analyze" and menu_choice != "scan" and menu_choice != "admin" and menu_choice != "sensors":
-            current_device = menu_choice
-            device_info_shown = False  # Reset flag when switching devices
+        elif menu_choice == "full_device_info":
+            if not current_device:
+                console.print("[yellow]⚠️ No device selected. Please select a device.[/yellow]")
+                current_device = select_device()
+                if not current_device:
+                    continue
+                device_info_shown = False
+            display_full_device_info(current_device)
+        
+        elif menu_choice == "change_device":
+            devices = get_available_devices()
+            if not devices:
+                console.print("[yellow]⚠️ No devices available[/yellow]")
+            else:
+                new_device = select_device()
+                if new_device:
+                    current_device = new_device
+                    device_info_shown = False
 
 
 if __name__ == "__main__":
