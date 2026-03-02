@@ -23,6 +23,7 @@ from ui_styles import (
     print_device_selector_animation, print_success_message, print_error_message,
     print_warning_message, print_info_message, print_footer, print_scan_complete_animation
 )
+from dependency_checker import check_all_dependencies
 
 console = Console()
 
@@ -675,6 +676,49 @@ def device_unlock(device: str):
         return False
 
 
+def screen_share(device: str):
+    """Capture and display device screen."""
+    adb = get_adb_interface(device)
+    
+    console.print("\n[bold cyan]📸 Screen Mirroring[/bold cyan]")
+    console.print("[yellow]⏳ Checking scrcpy installation...[/yellow]")
+    
+    try:
+        # Check if scrcpy is installed
+        if not adb.check_scrcpy_installed():
+            console.print("\n[red]❌ scrcpy is not installed on this system.[/red]")
+            console.print("\n[bold cyan]Installation Instructions:[/bold cyan]")
+            console.print("[yellow]Windows (via Chocolatey):[/yellow]")
+            console.print("  [cyan]choco install scrcpy[/cyan]")
+            console.print("\n[yellow]Windows (via Scoop):[/yellow]")
+            console.print("  [cyan]scoop install scrcpy[/cyan]")
+            console.print("\n[yellow]macOS (via Homebrew):[/yellow]")
+            console.print("  [cyan]brew install scrcpy[/cyan]")
+            console.print("\n[yellow]Linux (Ubuntu/Debian):[/yellow]")
+            console.print("  [cyan]sudo apt install scrcpy[/cyan]")
+            console.print("\n[yellow]Or download from:[/yellow]")
+            console.print("  [cyan]https://github.com/Genymobile/scrcpy/releases[/cyan]")
+            console.print("\n[dim]After installing, restart this application.[/dim]")
+            return
+        
+        console.print("[green]✓ scrcpy found![/green]")
+        console.print("[yellow]⏳ Launching live screen mirroring...[/yellow]")
+        
+        # Start screen mirroring
+        if adb.start_screen_mirroring():
+            console.print("[green]✓ Screen mirroring started![/green]")
+            console.print("[cyan]📱 Live screen is now displayed[/cyan]")
+            console.print("[cyan]⌨️  You can interact with the device using your mouse and keyboard[/cyan]")
+            console.print("[dim]Close the scrcpy window to stop mirroring[/dim]")
+        else:
+            console.print("[red]❌ Failed to start scrcpy. Check your device connection.[/red]")
+            console.print("[dim]Ensure device has USB debugging enabled.[/dim]")
+        
+    except Exception as e:
+        console.print(f"[red]❌ Error: {str(e)[:100]}[/red]")
+        console.print("[dim]Ensure ADB connection is active and device is responding.[/dim]")
+
+
 def admin_operations_menu(device: str):
     """Admin operations submenu."""
     while True:
@@ -1201,7 +1245,7 @@ def main_menu():
     while True:
         print_main_menu()
         
-        choice = console.input("[bold cyan]Select option (1-10): [/bold cyan]")
+        choice = console.input("[bold cyan]Select option (1-11): [/bold cyan]")
         
         if choice == "1":
             return "list"
@@ -1233,11 +1277,14 @@ def main_menu():
             interactive_adb_setup()
         
         elif choice == "10":
+            return "screen_share"
+        
+        elif choice == "11":
             print_footer()
             sys.exit(0)
         
         else:
-            console.print("[red]❌ Invalid choice. Please select 1-10.[/red]")
+            console.print("[red]❌ Invalid choice. Please select 1-11.[/red]")
             console.input("[dim]Press Enter to continue...[/dim]")
 
 
@@ -1342,6 +1389,9 @@ def main():
     """Main entry point."""
     # Clear terminal for fresh start
     os.system('cls' if os.name == 'nt' else 'clear')
+    
+    # Check all dependencies before starting
+    check_all_dependencies()
     
     # Display beautiful banner
     print_gradient_banner()
@@ -1448,6 +1498,16 @@ def main():
                     continue
                 device_info_shown = False
             display_full_device_info(current_device)
+        
+        elif menu_choice == "screen_share":
+            if not current_device:
+                console.print("[yellow]⚠️ No device selected. Please select a device.[/yellow]")
+                current_device = select_device()
+                if not current_device:
+                    continue
+                device_info_shown = False
+            screen_share(current_device)
+            console.input("[dim]Press Enter to continue...[/dim]")
         
         elif menu_choice == "change_device":
             devices = get_available_devices()

@@ -17,6 +17,7 @@ import re
 import sys
 import subprocess
 import json
+import os
 import click
 from datetime import datetime
 from typing import List, Dict, Optional, Tuple
@@ -741,6 +742,76 @@ class ADBInterface:
         """Force stop an app."""
         _, _, code = self._run_cmd(["shell", "am", "force-stop", package])
         return code == 0
+    
+    def capture_screen(self, output_path: str = None) -> Optional[str]:
+        """Capture device screen and save to local file."""
+        try:
+            import tempfile
+            import time
+            
+            # Use temp directory if no output path provided
+            if output_path is None:
+                temp_dir = tempfile.gettempdir()
+                output_path = os.path.join(temp_dir, "phone_screen.png")
+            
+            # Capture screenshot on device
+            device_screenshot = "/sdcard/screen_capture.png"
+            
+            # Take screenshot
+            stdout, stderr, code = self._run_cmd(["shell", "screencap", "-p", device_screenshot])
+            if code != 0:
+                return None
+            
+            time.sleep(0.5)
+            
+            # Pull screenshot to local machine
+            stdout, stderr, code = self._run_cmd(["pull", device_screenshot, output_path])
+            if code != 0:
+                return None
+            
+            time.sleep(0.5)
+            
+            # Clean up device file
+            self._run_cmd(["shell", "rm", device_screenshot])
+            
+            return output_path
+        except Exception as e:
+            return None
+    
+    def start_screen_mirroring(self) -> bool:
+        """Start live screen mirroring using scrcpy."""
+        try:
+            # Build scrcpy command
+            cmd = ["scrcpy"]
+            
+            # Add device if specified
+            if self.device:
+                cmd.extend(["-s", self.device])
+            
+            # Optional parameters for better experience
+            cmd.extend([
+                "-m", "1024",  # Limit resolution for performance
+                "--max-fps", "30",  # Limit FPS
+            ])
+            
+            # Start scrcpy process (non-blocking)
+            subprocess.Popen(cmd)
+            return True
+        except Exception as e:
+            return False
+    
+    def check_scrcpy_installed(self) -> bool:
+        """Check if scrcpy is installed on the system."""
+        try:
+            result = subprocess.run(
+                ["scrcpy", "--version"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            return result.returncode == 0
+        except:
+            return False
     
     def wake_up_device(self) -> bool:
         """Wake up device screen and turn it on."""

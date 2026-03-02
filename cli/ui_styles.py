@@ -81,7 +81,8 @@ def print_main_menu(device_info: str = None):
         ("7", "📊", "Demo Mode", "See sample results"),
         ("8", "🔄", "Change Device", "Switch to different device"),
         ("9", "⚙️ ", "Reconfigure ADB", "Update ADB settings"),
-        ("10", "❌", "Exit", "Close application"),
+        ("10", "📸", "Screen Share", "View connected phone screen"),
+        ("11", "❌", "Exit", "Close application"),
     ]
     
     console.print("\n[bold cyan]╔════════════════════════════════════════╗[/bold cyan]")
@@ -89,12 +90,12 @@ def print_main_menu(device_info: str = None):
     console.print("[bold cyan]╚════════════════════════════════════════╝[/bold cyan]\n")
     
     for num, icon, title, desc in menu_items:
-        if num == "10":
+        if num == "11":
             console.print()
         
-        if num == "10":
+        if num == "11":
             color = "red"
-        elif num in ["7", "8", "9"]:
+        elif num in ["7", "8", "9", "10"]:
             color = "yellow"
         else:
             color = "cyan"
