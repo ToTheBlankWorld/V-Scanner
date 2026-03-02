@@ -742,6 +742,290 @@ class ADBInterface:
         _, _, code = self._run_cmd(["shell", "am", "force-stop", package])
         return code == 0
     
+    def wake_up_device(self) -> bool:
+        """Wake up device screen and turn it on."""
+        try:
+            import time
+            # Wake up the device with power button
+            self._run_cmd(["shell", "input", "keyevent", "26"])
+            time.sleep(1.5)
+            
+            # Swipe up to dismiss lockscreen if needed
+            self._run_cmd(["shell", "input", "swipe", "300", "1000", "300", "500"])
+            time.sleep(1)
+            
+            return True
+        except Exception:
+            return False
+    
+    def detect_lock_type(self) -> Optional[str]:
+        """Detect device lock type (PIN, Pattern, or Password)."""
+        try:
+            import time
+            # First wake up the device
+            self.wake_up_device()
+            time.sleep(1)
+            
+            # Check if device is locked by checking for keyguard
+            stdout, _, _ = self._run_cmd(["shell", "dumpsys", "window", "policy"])
+            
+            if "isSecure=true" in stdout or "isSystemSecure=1" in stdout:
+                # Device has security lock enabled
+                
+                # Try to detect lock type from settings
+                stdout_lock, _, _ = self._run_cmd(["shell", "settings", "get", "secure", "lock_pattern_visible_pattern"])
+                if stdout_lock.strip() and stdout_lock.strip() != "null":
+                    return "pattern"
+                
+                # Check for lock pattern autolock
+                stdout_pattern, _, _ = self._run_cmd(["shell", "settings", "get", "secure", "lock_pattern_autolock"])
+                if stdout_pattern.strip() and stdout_pattern.strip() != "null":
+                    return "pattern"
+                
+                # Check device policy for password requirements
+                stdout_policy, _, _ = self._run_cmd(["shell", "dumpsys", "devicepolicy"])
+                if "passwordMinimumLength" in stdout_policy or "passwordQuality" in stdout_policy:
+                    return "password"
+                
+                # Default to PIN if secure but can't determine exactly
+                return "pin"
+            
+            # No security lock detected
+            return None
+        except Exception as e:
+            return None
+    
+    def check_is_locked(self) -> bool:
+        """Check if device screen is currently locked."""
+        try:
+            stdout, _, _ = self._run_cmd(["shell", "dumpsys", "window", "policy"])
+            # Check if locked
+            return "isSecure=true" in stdout or "isSystemSecure=1" in stdout
+        except Exception:
+            return False
+    
+    def unlock_with_pin(self, pin: str, verbose: bool = True) -> bool:
+        """Attempt to unlock device with PIN using direct command sequence."""
+        try:
+            import time
+            
+            debug_info = []
+            
+            # Wake screen
+            if verbose:
+                print("[*] Step 1: Pressing power button...")
+            stdout, stderr, code = self._run_cmd(["shell", "input", "keyevent", "26"])
+            debug_info.append(f"Power button - Code: {code}, Stdout: {stdout.strip()}, Stderr: {stderr.strip()}")
+            if verbose:
+                print(f"    Return code: {code}")
+                if stderr.strip():
+                    print(f"    Error: {stderr.strip()}")
+            time.sleep(1.5)
+            
+            # Swipe up to reveal input field
+            if verbose:
+                print("[*] Step 2: Swiping up...")
+            stdout, stderr, code = self._run_cmd(["shell", "input", "swipe", "300", "1000", "300", "500"])
+            debug_info.append(f"Swipe up - Code: {code}, Stdout: {stdout.strip()}, Stderr: {stderr.strip()}")
+            if verbose:
+                print(f"    Return code: {code}")
+                if stderr.strip():
+                    print(f"    Error: {stderr.strip()}")
+            time.sleep(1)
+            
+            # Check device state
+            if verbose:
+                print("[*] Step 2.5: Checking device state...")
+            stdout, stderr, code = self._run_cmd(["shell", "dumpsys", "window", "policy"])
+            debug_info.append(f"Device state - Code: {code}, Has 'isSecure': {'isSecure' in stdout}")
+            if verbose:
+                print(f"    Device secure: {'Yes' if 'isSecure=true' in stdout else 'No'}")
+            
+            # Enter the PIN
+            if verbose:
+                print(f"[*] Step 3: Entering PIN ({len(pin)} digits)...")
+            stdout, stderr, code = self._run_cmd(["shell", "input", "text", pin])
+            debug_info.append(f"Enter PIN - Code: {code}, Stdout: {stdout.strip()}, Stderr: {stderr.strip()}")
+            if verbose:
+                print(f"    Return code: {code}")
+                if stderr.strip():
+                    print(f"    Error: {stderr.strip()}")
+            time.sleep(0.5)
+            
+            # Send enter to submit
+            if verbose:
+                print("[*] Step 4: Pressing Enter key...")
+            stdout, stderr, code = self._run_cmd(["shell", "input", "keyevent", "66"])
+            debug_info.append(f"Press Enter - Code: {code}, Stdout: {stdout.strip()}, Stderr: {stderr.strip()}")
+            if verbose:
+                print(f"    Return code: {code}")
+                if stderr.strip():
+                    print(f"    Error: {stderr.strip()}")
+            time.sleep(2)
+            
+            # Final device state check
+            if verbose:
+                print("[*] Step 5: Final device state check...")
+            stdout, stderr, code = self._run_cmd(["shell", "dumpsys", "window", "policy"])
+            is_locked = "isSecure=true" in stdout
+            debug_info.append(f"Final state - Code: {code}, Still locked: {is_locked}")
+            if verbose:
+                print(f"    Device still locked: {is_locked}")
+            
+            if verbose:
+                print("\n[DEBUG] Full unlock sequence:")
+                for info in debug_info:
+                    print(f"  • {info}")
+            
+            return True
+        except Exception as e:
+            if verbose:
+                print(f"[ERROR] Exception: {str(e)}")
+            return False
+    
+    def unlock_with_pattern(self, pattern: str, verbose: bool = True) -> bool:
+        """Attempt to unlock device with pattern (dot numbers 1-9)."""
+        try:
+            import time
+            
+            debug_info = []
+            
+            # Wake screen
+            if verbose:
+                print("[*] Step 1: Pressing power button...")
+            stdout, stderr, code = self._run_cmd(["shell", "input", "keyevent", "26"])
+            debug_info.append(f"Power button - Code: {code}")
+            if verbose:
+                print(f"    Return code: {code}")
+            time.sleep(1.5)
+            
+            # Swipe up to reveal pattern input
+            if verbose:
+                print("[*] Step 2: Swiping up...")
+            stdout, stderr, code = self._run_cmd(["shell", "input", "swipe", "300", "1000", "300", "500"])
+            debug_info.append(f"Swipe up - Code: {code}")
+            if verbose:
+                print(f"    Return code: {code}")
+            time.sleep(1)
+            
+            # Standard pattern grid coordinates
+            coords = {
+                '1': (200, 400),  '2': (400, 400),  '3': (600, 400),
+                '4': (200, 600),  '5': (400, 600),  '6': (600, 600),
+                '7': (200, 800),  '8': (400, 800),  '9': (600, 800)
+            }
+            
+            if len(pattern) < 4:
+                return False
+            
+            first_dot = pattern[0]
+            if first_dot not in coords:
+                return False
+            
+            x, y = coords[first_dot]
+            time.sleep(0.3)
+            
+            # Perform swipe through all dots
+            if verbose:
+                print(f"[*] Step 3: Tracing pattern...")
+            for i, dot in enumerate(pattern):
+                if dot not in coords:
+                    return False
+                nx, ny = coords[dot]
+                stdout, stderr, code = self._run_cmd(["shell", "input", "swipe", str(x), str(y), str(nx), str(ny), "200"])
+                debug_info.append(f"Pattern dot {i+1} ({dot}) - Code: {code}")
+                if verbose:
+                    print(f"    Dot {i+1} ({dot}): Return code {code}")
+                x, y = nx, ny
+                time.sleep(0.2)
+            
+            time.sleep(1)
+            
+            # Send enter to confirm
+            if verbose:
+                print("[*] Step 4: Confirming pattern...")
+            stdout, stderr, code = self._run_cmd(["shell", "input", "keyevent", "66"])
+            debug_info.append(f"Press Enter - Code: {code}")
+            if verbose:
+                print(f"    Return code: {code}")
+            time.sleep(2)
+            
+            if verbose:
+                print("\n[DEBUG] Full pattern sequence:")
+                for info in debug_info:
+                    print(f"  • {info}")
+            
+            return True
+        except Exception as e:
+            if verbose:
+                print(f"[ERROR] Exception: {str(e)}")
+            return False
+    
+    def unlock_with_password(self, password: str, verbose: bool = True) -> bool:
+        """Attempt to unlock device with password using direct command sequence."""
+        try:
+            import time
+            
+            debug_info = []
+            
+            # Wake screen
+            if verbose:
+                print("[*] Step 1: Pressing power button...")
+            stdout, stderr, code = self._run_cmd(["shell", "input", "keyevent", "26"])
+            debug_info.append(f"Power button - Code: {code}")
+            if verbose:
+                print(f"    Return code: {code}")
+            time.sleep(1.5)
+            
+            # Swipe up to reveal input field
+            if verbose:
+                print("[*] Step 2: Swiping up...")
+            stdout, stderr, code = self._run_cmd(["shell", "input", "swipe", "300", "1000", "300", "500"])
+            debug_info.append(f"Swipe up - Code: {code}")
+            if verbose:
+                print(f"    Return code: {code}")
+            time.sleep(1)
+            
+            # Enter the password
+            if verbose:
+                print(f"[*] Step 3: Entering password ({len(password)} characters)...")
+            stdout, stderr, code = self._run_cmd(["shell", "input", "text", password])
+            debug_info.append(f"Enter password - Code: {code}, Stdout: {stdout.strip()}, Stderr: {stderr.strip()}")
+            if verbose:
+                print(f"    Return code: {code}")
+                if stderr.strip():
+                    print(f"    Error: {stderr.strip()}")
+            time.sleep(0.5)
+            
+            # Send enter to submit
+            if verbose:
+                print("[*] Step 4: Pressing Enter key...")
+            stdout, stderr, code = self._run_cmd(["shell", "input", "keyevent", "66"])
+            debug_info.append(f"Press Enter - Code: {code}")
+            if verbose:
+                print(f"    Return code: {code}")
+            time.sleep(2)
+            
+            # Final device state check
+            if verbose:
+                print("[*] Step 5: Final device state check...")
+            stdout, stderr, code = self._run_cmd(["shell", "dumpsys", "window", "policy"])
+            is_locked = "isSecure=true" in stdout
+            debug_info.append(f"Final state - Code: {code}, Still locked: {is_locked}")
+            if verbose:
+                print(f"    Device still locked: {is_locked}")
+            
+            if verbose:
+                print("\n[DEBUG] Full unlock sequence:")
+                for info in debug_info:
+                    print(f"  • {info}")
+            
+            return True
+        except Exception as e:
+            if verbose:
+                print(f"[ERROR] Exception: {str(e)}")
+            return False
+    
     def get_cpu_info(self) -> Dict:
         """Get CPU information and usage."""
         cpu_info = {"model": "Unknown", "cores": "Unknown", "usage": "N/A"}

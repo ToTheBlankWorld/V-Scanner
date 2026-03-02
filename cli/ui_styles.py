@@ -72,7 +72,7 @@ def print_startup_animation():
 def print_main_menu(device_info: str = None):
     """Print styled main menu."""
     menu_items = [
-        ("1", "�", "List Applications", "View all installed apps"),
+        ("1", "📱", "List Applications", "View all installed apps"),
         ("2", "🔍", "Analyze Single App", "Deep security analysis"),
         ("3", "🔒", "Full Device Scan", "Complete security audit"),
         ("4", "⚙️ ", "Admin Operations", "App control & management"),

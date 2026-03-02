@@ -426,7 +426,7 @@ def demo_mode():
 
 
 def select_app_for_admin_op(device: str):
-    """Select an app from the list for admin operations."""
+    """Select an app from the list for admin operations with pagination."""
     adb = get_adb_interface(device)
     packages = adb.list_packages(include_system=False)
     
@@ -434,35 +434,245 @@ def select_app_for_admin_op(device: str):
         console.print("[yellow]No apps found.[/yellow]")
         return None
     
-    table = Table(title="Installed Applications", box=box.ROUNDED)
-    table.add_column("#", style="dim", width=4)
-    table.add_column("App Name", style="green")
-    table.add_column("Package Name", style="cyan")
+    page = 0
+    apps_per_page = 50
     
-    for i, pkg in enumerate(packages, 1):
-        app_name = adb.get_app_label(pkg)
-        table.add_row(str(i), app_name, pkg)
-        if i >= 50:  # Limit display
-            table.add_row("[dim]...more[/dim]", "[dim]...[/dim]", "[dim]...[/dim]")
-            break
+    while True:
+        start_idx = page * apps_per_page
+        end_idx = start_idx + apps_per_page
+        page_packages = packages[start_idx:end_idx]
+        
+        table = Table(title=f"Installed Applications (Page {page + 1})", box=box.ROUNDED)
+        table.add_column("#", style="dim", width=4)
+        table.add_column("App Name", style="green")
+        table.add_column("Package Name", style="cyan")
+        
+        for i, pkg in enumerate(page_packages, start_idx + 1):
+            app_name = adb.get_app_label(pkg)
+            table.add_row(str(i), app_name, pkg)
+        
+        console.print(table)
+        console.print(f"\n[bold]Total: {len(packages)} apps | Showing {start_idx + 1}-{min(end_idx, len(packages))}[/bold]")
+        
+        # Show pagination options
+        if end_idx < len(packages):
+            console.print("\n[yellow]Options:[/yellow]")
+            console.print(f"[{start_idx + 1}-{min(end_idx, len(packages))}] Select app by number")
+            console.print("[n] Show next 50 apps")
+            if page > 0:
+                console.print("[p] Show previous 50 apps")
+            console.print("[q] Enter package name / or go back")
+            
+            user_input = console.input("\n[bold]Select option: [/bold]").strip().lower()
+            
+            if user_input == 'n':
+                page += 1
+                continue
+            elif user_input == 'p' and page > 0:
+                page -= 1
+                continue
+            elif user_input == 'q':
+                package_input = console.input("Enter package name: ").strip()
+                if package_input in packages:
+                    return package_input
+                console.print("[red]Invalid package name.[/red]")
+                return None
+            else:
+                try:
+                    choice = int(user_input)
+                    if start_idx + 1 <= choice <= end_idx:
+                        return page_packages[choice - start_idx - 1]
+                except ValueError:
+                    pass
+                console.print("[red]Invalid selection.[/red]")
+                return None
+        else:
+            # Last page - simpler options
+            console.print("\n[yellow]Options:[/yellow]")
+            console.print(f"[{start_idx + 1}-{len(packages)}] Select app by number")
+            if page > 0:
+                console.print("[p] Show previous 50 apps")
+            console.print("[q] Enter package name / or go back")
+            
+            user_input = console.input("\n[bold]Select option: [/bold]").strip().lower()
+            
+            if user_input == 'p' and page > 0:
+                page -= 1
+                continue
+            elif user_input == 'q':
+                package_input = console.input("Enter package name: ").strip()
+                if package_input in packages:
+                    return package_input
+                console.print("[red]Invalid package name.[/red]")
+                return None
+            else:
+                try:
+                    choice = int(user_input)
+                    if start_idx + 1 <= choice <= len(packages):
+                        return page_packages[choice - start_idx - 1]
+                except ValueError:
+                    pass
+                console.print("[red]Invalid selection.[/red]")
+                return None
+
+
+def device_unlock(device: str):
+    """Unlock device by detecting lock type and requesting appropriate input."""
+    adb = get_adb_interface(device)
     
-    console.print(table)
-    console.print(f"\n[bold]Total: {len(packages)} apps[/bold]")
+    console.print("\n[bold cyan]🔓 Device Unlock[/bold cyan]")
+    console.print("[yellow]⚡ Waking device screen...[/yellow]")
     
-    try:
-        choice = int(console.input("\nSelect app number (or enter package name directly): ").strip())
-        if 1 <= choice <= len(packages):
-            return packages[choice - 1]
-    except ValueError:
-        pass
+    # Wake up the device
+    adb.wake_up_device()
+    console.print("[green]✓ Screen woke up[/green]")
     
-    # Assume user entered package name directly
-    package_input = console.input("Enter package name: ").strip()
-    if package_input in packages:
-        return package_input
+    console.print("[yellow]🔍 Detecting device lock type...[/yellow]")
+    lock_type = adb.detect_lock_type()
     
-    console.print("[red]Invalid selection.[/red]")
-    return None
+    if not lock_type:
+        console.print("[yellow]⚠️ Could not auto-detect lock type. Please select your lock type:[/yellow]")
+        console.print("[1] PIN (numeric)")
+        console.print("[2] Pattern (dot sequence)")
+        console.print("[3] Password (text)")
+        console.print("[4] No lock / Go back")
+        
+        choice = console.input("\n[bold]Select lock type (1-4): [/bold]").strip()
+        
+        if choice == "1":
+            lock_type = "pin"
+        elif choice == "2":
+            lock_type = "pattern"
+        elif choice == "3":
+            lock_type = "password"
+        else:
+            console.print("[yellow]Cancelled.[/yellow]")
+            return False
+    else:
+        console.print(f"[green]✓ Lock Type Detected: [bold]{lock_type.upper()}[/bold][/green]")
+    
+    # Process unlock based on type
+    if lock_type.lower() == "pin":
+        console.print("\n[cyan]Enter PIN (numeric only):[/cyan]")
+        pin = console.input("[bold]PIN: [/bold]").strip()
+        if not pin.isdigit():
+            console.print("[red]❌ Invalid PIN format. Must be numeric.[/red]")
+            return False
+        
+        console.print("[yellow]⏳ Executing unlock sequence with detailed logging...[/yellow]\n")
+        
+        try:
+            # Capture debug output
+            import io
+            import sys
+            old_stdout = sys.stdout
+            sys.stdout = buffer = io.StringIO()
+            
+            result = adb.unlock_with_pin(pin, verbose=True)
+            
+            # Get captured output
+            output = buffer.getvalue()
+            sys.stdout = old_stdout
+            
+            # Display captured output
+            if output:
+                console.print("[dim]" + output + "[/dim]")
+            
+            console.print("\n[green]✓ Unlock sequence completed![/green]")
+            console.print("\n[cyan]📱 Check your device:[/cyan]")
+            console.print("[dim]  • Does the lock screen appear?[/dim]")
+            console.print("[dim]  • Is the PIN field focused?[/dim]")
+            console.print("[dim]  • Did it enter the PIN?[/dim]")
+            console.print("[dim]  • Is the device now unlocked?[/dim]")
+            return result
+        except Exception as e:
+            sys.stdout = old_stdout
+            console.print(f"[red]❌ Error: {str(e)}[/red]")
+            return False
+    
+    elif lock_type.lower() == "pattern":
+        console.print("\n[cyan]Enter pattern (dot numbers 1-9):[/cyan]")
+        console.print("[dim]Pattern grid:[/dim]")
+        console.print("[dim]1 2 3[/dim]")
+        console.print("[dim]4 5 6[/dim]")
+        console.print("[dim]7 8 9[/dim]")
+        pattern = console.input("[bold]Pattern (e.g., 123456789): [/bold]").strip()
+        if not all(c in '123456789' for c in pattern) or len(pattern) < 4:
+            console.print("[red]❌ Invalid pattern. Must contain 4-9 dots (1-9).[/red]")
+            return False
+        
+        console.print("[yellow]⏳ Executing unlock sequence with detailed logging...[/yellow]\n")
+        
+        try:
+            # Capture debug output
+            import io
+            import sys
+            old_stdout = sys.stdout
+            sys.stdout = buffer = io.StringIO()
+            
+            result = adb.unlock_with_pattern(pattern, verbose=True)
+            
+            # Get captured output
+            output = buffer.getvalue()
+            sys.stdout = old_stdout
+            
+            # Display captured output
+            if output:
+                console.print("[dim]" + output + "[/dim]")
+            
+            console.print("\n[green]✓ Unlock sequence completed![/green]")
+            console.print("\n[cyan]📱 Check your device:[/cyan]")
+            console.print("[dim]  • Does the pattern screen appear?[/dim]")
+            console.print("[dim]  • Is the pattern being traced?[/dim]")
+            console.print("[dim]  • Is the device now unlocked?[/dim]")
+            return result
+        except Exception as e:
+            sys.stdout = old_stdout
+            console.print(f"[red]❌ Error: {str(e)}[/red]")
+            return False
+    
+    elif lock_type.lower() == "password":
+        console.print("\n[cyan]Enter password:[/cyan]")
+        import getpass
+        password = getpass.getpass("[bold]Password: [/bold]")
+        if not password:
+            console.print("[red]❌ Password cannot be empty.[/red]")
+            return False
+        
+        console.print("[yellow]⏳ Executing unlock sequence with detailed logging...[/yellow]\n")
+        
+        try:
+            # Capture debug output
+            import io
+            import sys
+            old_stdout = sys.stdout
+            sys.stdout = buffer = io.StringIO()
+            
+            result = adb.unlock_with_password(password, verbose=True)
+            
+            # Get captured output
+            output = buffer.getvalue()
+            sys.stdout = old_stdout
+            
+            # Display captured output
+            if output:
+                console.print("[dim]" + output + "[/dim]")
+            
+            console.print("\n[green]✓ Unlock sequence completed![/green]")
+            console.print("\n[cyan]📱 Check your device:[/cyan]")
+            console.print("[dim]  • Does the lock screen appear?[/dim]")
+            console.print("[dim]  • Is the password field focused?[/dim]")
+            console.print("[dim]  • Did it enter the password?[/dim]")
+            console.print("[dim]  • Is the device now unlocked?[/dim]")
+            return result
+        except Exception as e:
+            sys.stdout = old_stdout
+            console.print(f"[red]❌ Error: {str(e)}[/red]")
+            return False
+    
+    else:
+        console.print(f"[red]❌ Unknown lock type: {lock_type}[/red]")
+        return False
 
 
 def admin_operations_menu(device: str):
@@ -1130,6 +1340,9 @@ def _display_high_risk_apps(full_report):
 
 def main():
     """Main entry point."""
+    # Clear terminal for fresh start
+    os.system('cls' if os.name == 'nt' else 'clear')
+    
     # Display beautiful banner
     print_gradient_banner()
     
