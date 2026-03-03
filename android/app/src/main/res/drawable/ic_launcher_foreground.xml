@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Shield shape -->
+    <path
+        android:fillColor="#FF00E676"
+        android:pathData="M54,24L28,34v16c0,16.4,11.1,31.7,26,35.4c14.9,-3.7,26,-19,26,-35.4V34L54,24z"/>
+    <!-- Inner shield -->
+    <path
+        android:fillColor="#FF121212"
+        android:pathData="M54,27.5L31,36.5v13.5c0,14.6,9.8,28.3,23,31.6c13.2,-3.3,23,-17,23,-31.6V36.5L54,27.5z"/>
+    <!-- V letter -->
+    <path
+        android:fillColor="#FF00E676"
+        android:pathData="M42,45l12,20l12,-20h-7l-5,10l-5,-10z"/>
+</vector>

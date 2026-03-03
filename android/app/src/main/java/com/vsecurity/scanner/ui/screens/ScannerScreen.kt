@@ -18,6 +18,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
+import com.vsecurity.scanner.data.model.DangerousPermission
 import com.vsecurity.scanner.data.model.RiskLevel
 import com.vsecurity.scanner.data.model.ScannedApp
 import com.vsecurity.scanner.ui.theme.*
@@ -111,6 +112,14 @@ fun ScannerScreen(
                 selected = uiState.selectedFilter == RiskLevel.MEDIUM,
                 onClick = { viewModel.setFilter(RiskLevel.MEDIUM) },
                 label = { Text("Medium") }
+            )
+            FilterChip(
+                selected = uiState.selectedFilter == RiskLevel.LOW,
+                onClick = { viewModel.setFilter(RiskLevel.LOW) },
+                label = { Text("Low") },
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = SecurityGreen.copy(alpha = 0.2f)
+                )
             )
         }
 
@@ -240,7 +249,7 @@ fun ScanProgressCard(
             }
             Spacer(modifier = Modifier.height(12.dp))
             LinearProgressIndicator(
-                progress = { progress },
+                progress = progress,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(8.dp)
@@ -299,6 +308,7 @@ fun ScanCompletedCard(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ScannedAppCard(
     app: ScannedApp,
@@ -345,11 +355,22 @@ fun ScannedAppCard(
             Spacer(modifier = Modifier.width(12.dp))
 
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = app.appName,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = app.appName,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    if (app.isFromPlayStore) {
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Icon(
+                            imageVector = Icons.Default.Verified,
+                            contentDescription = "Verified source",
+                            modifier = Modifier.size(14.dp),
+                            tint = SecurityBlue
+                        )
+                    }
+                }
                 Text(
                     text = app.packageName,
                     style = MaterialTheme.typography.bodySmall,
@@ -360,31 +381,29 @@ fun ScannedAppCard(
                     modifier = Modifier.padding(top = 4.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
+                    AssistChip(
+                        onClick = {},
+                        label = { 
+                            Text(
+                                "${app.permissions.size} perms",
+                                style = MaterialTheme.typography.labelSmall
+                            ) 
+                        },
+                        colors = AssistChipDefaults.assistChipColors(
+                            containerColor = MaterialTheme.colorScheme.surface
+                        )
+                    )
                     if (app.dangerousPermissions.isNotEmpty()) {
                         AssistChip(
                             onClick = {},
                             label = { 
                                 Text(
-                                    "${app.dangerousPermissions.size} risky perms",
+                                    "${app.dangerousPermissions.size} risky",
                                     style = MaterialTheme.typography.labelSmall
                                 ) 
                             },
                             colors = AssistChipDefaults.assistChipColors(
-                                containerColor = DangerRed.copy(alpha = 0.1f)
-                            )
-                        )
-                    }
-                    if (app.targetSdk < 28) {
-                        AssistChip(
-                            onClick = {},
-                            label = { 
-                                Text(
-                                    "SDK ${app.targetSdk}",
-                                    style = MaterialTheme.typography.labelSmall
-                                ) 
-                            },
-                            colors = AssistChipDefaults.assistChipColors(
-                                containerColor = WarningOrange.copy(alpha = 0.1f)
+                                containerColor = riskColor.copy(alpha = 0.1f)
                             )
                         )
                     }
@@ -420,21 +439,39 @@ fun AppDetailBottomSheet(
         ) {
             // Header
             item {
-                Text(
-                    text = app.appName,
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = app.packageName,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Text(
-                    text = "Version ${app.versionName}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = app.appName,
+                                style = MaterialTheme.typography.headlineSmall,
+                                fontWeight = FontWeight.Bold
+                            )
+                            if (app.isFromPlayStore) {
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Icon(
+                                    imageVector = Icons.Default.Verified,
+                                    contentDescription = "Verified source",
+                                    modifier = Modifier.size(20.dp),
+                                    tint = SecurityBlue
+                                )
+                            }
+                        }
+                        Text(
+                            text = app.packageName,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = "Version ${app.versionName}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
                 Spacer(modifier = Modifier.height(16.dp))
             }
 
@@ -444,20 +481,55 @@ fun AppDetailBottomSheet(
                 Spacer(modifier = Modifier.height(16.dp))
             }
 
-            // SDK Info
+            // App Info Cards
             item {
                 Text(
-                    text = "SDK Information",
+                    text = "App Information",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     InfoChip("Target SDK", app.targetSdk.toString())
                     InfoChip("Min SDK", app.minSdk.toString())
+                    InfoChip("Source", app.installerSource)
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    InfoChip("Total Perms", app.permissions.size.toString())
+                    InfoChip("Risky Perms", app.dangerousPermissions.size.toString())
+                    if (app.isSystemApp) {
+                        InfoChip("Type", "System")
+                    }
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+
+            // Install info
+            item {
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant
+                    )
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Text(
+                            text = "Installed: ${formatTimestamp(app.installTime)}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = "Last Updated: ${formatTimestamp(app.lastUpdateTime)}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
                 Spacer(modifier = Modifier.height(16.dp))
             }
@@ -468,21 +540,69 @@ fun AppDetailBottomSheet(
                     Text(
                         text = "Dangerous Permissions (${app.dangerousPermissions.size})",
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold
+                        fontWeight = FontWeight.SemiBold,
+                        color = DangerRed
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                 }
 
-                items(app.dangerousPermissions) { perm ->
-                    PermissionCard(
-                        name = perm.name,
-                        category = perm.category.name,
-                        riskLevel = perm.riskLevel,
-                        description = perm.description,
-                        mitigations = perm.mitigations
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
+                // Group permissions by category
+                val grouped = app.dangerousPermissions.groupBy { it.category }
+                grouped.forEach { (category, perms) ->
+                    item {
+                        Text(
+                            text = category.name,
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(vertical = 4.dp)
+                        )
+                    }
+                    items(perms) { perm ->
+                        PermissionCard(
+                            name = perm.name,
+                            category = perm.category.name,
+                            riskLevel = perm.riskLevel,
+                            description = perm.description,
+                            mitigations = perm.mitigations
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                    }
                 }
+            }
+
+            // Safe permissions summary
+            item {
+                val safePermCount = app.permissions.size - app.dangerousPermissions.size
+                if (safePermCount > 0) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = SecurityGreen.copy(alpha = 0.1f)
+                        )
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.CheckCircle,
+                                contentDescription = null,
+                                tint = SecurityGreen,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "$safePermCount standard permissions (safe)",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = SecurityGreen
+                            )
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(16.dp))
             }
         }
     }
@@ -523,11 +643,10 @@ fun RiskScoreSection(score: Int, level: RiskLevel) {
                 )
             }
             CircularProgressIndicator(
-                progress = { score / 100f },
+                progress = score / 100f,
                 modifier = Modifier.size(48.dp),
                 color = color,
-                strokeWidth = 6.dp,
-                trackColor = color.copy(alpha = 0.2f)
+                strokeWidth = 6.dp
             )
         }
     }
