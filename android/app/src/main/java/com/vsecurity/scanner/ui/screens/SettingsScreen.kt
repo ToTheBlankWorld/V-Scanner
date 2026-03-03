@@ -13,9 +13,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.navigation.NavController
 import com.vsecurity.scanner.ui.theme.*
 import com.vsecurity.scanner.ui.viewmodel.SettingsViewModel
@@ -28,6 +31,18 @@ fun SettingsScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
+
+    // Refresh permission status when user returns from system settings
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                viewModel.refreshPermissions()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     LazyColumn(
         modifier = Modifier
@@ -55,7 +70,7 @@ fun SettingsScreen(
                         context.startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
                     }
                 )
-                HorizontalDivider()
+                Divider()
                 PermissionItem(
                     title = "Notifications",
                     description = "For privacy alerts",
@@ -92,7 +107,7 @@ fun SettingsScreen(
                     checked = uiState.guardianEnabled,
                     onCheckedChange = { viewModel.setGuardianEnabled(it) }
                 )
-                HorizontalDivider()
+                Divider()
                 SettingsToggleItem(
                     icon = Icons.Default.PowerSettingsNew,
                     title = "Start on Boot",
@@ -139,14 +154,14 @@ fun SettingsScreen(
                     description = "Remove all scanned app data",
                     onClick = { viewModel.clearScanHistory() }
                 )
-                HorizontalDivider()
+                Divider()
                 SettingsActionItem(
                     icon = Icons.Default.DeleteSweep,
                     title = "Clear Sensor Logs",
                     description = "Remove all sensor access logs",
                     onClick = { viewModel.clearSensorLogs() }
                 )
-                HorizontalDivider()
+                Divider()
                 SettingsActionItem(
                     icon = Icons.Default.NotificationsOff,
                     title = "Clear All Alerts",
@@ -177,7 +192,7 @@ fun SettingsScreen(
                     title = "Version",
                     value = "1.0.0"
                 )
-                HorizontalDivider()
+                Divider()
                 SettingsInfoItem(
                     icon = Icons.Default.Security,
                     title = "V Scanner",

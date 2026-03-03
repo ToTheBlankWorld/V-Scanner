@@ -50,12 +50,6 @@
                 android:value="Privacy monitoring service that tracks sensor access by apps" />
         </service>
         
-        <!-- Usage Stats Monitoring Service -->
-        <service
-            android:name=".guardian.UsageMonitorService"
-            android:enabled="true"
-            android:exported="false" />
-
         <!-- Boot Receiver to start service on device boot -->
         <receiver
             android:name=".guardian.BootReceiver"
@@ -68,16 +62,6 @@
         </receiver>
 
         <!-- Notification Channels Provider -->
-        <provider
-            android:name="androidx.startup.InitializationProvider"
-            android:authorities="${applicationId}.androidx-startup"
-            android:exported="false"
-            tools:node="merge">
-            <meta-data
-                android:name="com.vsecurity.scanner.NotificationInitializer"
-                android:value="androidx.startup" />
-        </provider>
-
     </application>
 
 </manifest>

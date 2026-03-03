@@ -84,7 +84,7 @@ fun GuardianScreen(
                         checked = uiState.monitorCamera,
                         onCheckedChange = { viewModel.setMonitorCamera(it) }
                     )
-                    HorizontalDivider()
+                    Divider()
                     SensorToggleItem(
                         icon = Icons.Default.Mic,
                         label = "Microphone",
@@ -92,7 +92,7 @@ fun GuardianScreen(
                         checked = uiState.monitorMicrophone,
                         onCheckedChange = { viewModel.setMonitorMicrophone(it) }
                     )
-                    HorizontalDivider()
+                    Divider()
                     SensorToggleItem(
                         icon = Icons.Default.LocationOn,
                         label = "Location",
@@ -129,7 +129,7 @@ fun GuardianScreen(
                         checked = uiState.alertOnBackground,
                         onCheckedChange = { viewModel.setAlertOnBackground(it) }
                     )
-                    HorizontalDivider()
+                    Divider()
                     SensorToggleItem(
                         icon = Icons.Default.PhonelinkOff,
                         label = "Screen Off Access",
@@ -137,7 +137,7 @@ fun GuardianScreen(
                         checked = uiState.alertOnScreenOff,
                         onCheckedChange = { viewModel.setAlertOnScreenOff(it) }
                     )
-                    HorizontalDivider()
+                    Divider()
                     SensorToggleItem(
                         icon = Icons.Default.TrendingUp,
                         label = "Frequent Access",

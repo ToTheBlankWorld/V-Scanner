@@ -25,6 +25,8 @@ data class ScannedApp(
     val installTime: Long,
     val lastUpdateTime: Long,
     val isSystemApp: Boolean,
+    val isFromPlayStore: Boolean = false,
+    val installerSource: String = "Unknown",
     val lastScanned: Long = System.currentTimeMillis()
 )
 

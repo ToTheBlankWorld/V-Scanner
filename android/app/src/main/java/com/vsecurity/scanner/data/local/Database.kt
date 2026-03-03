@@ -17,7 +17,7 @@ import kotlinx.coroutines.flow.Flow
         AppSensorStats::class,
         DailySensorSummary::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
