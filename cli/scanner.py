@@ -778,8 +778,12 @@ class ADBInterface:
         except Exception as e:
             return None
     
-    def start_screen_mirroring(self) -> bool:
-        """Start live screen mirroring using scrcpy."""
+    def start_screen_mirroring(self, turn_off_screen: bool = False) -> bool:
+        """Start live screen mirroring using scrcpy.
+        
+        Args:
+            turn_off_screen: If True, turns off the physical phone screen while mirroring
+        """
         try:
             # Build scrcpy command
             cmd = ["scrcpy"]
@@ -787,6 +791,10 @@ class ADBInterface:
             # Add device if specified
             if self.device:
                 cmd.extend(["-s", self.device])
+            
+            # Turn off phone screen to save battery (can still control via laptop)
+            if turn_off_screen:
+                cmd.append("-S")  # or use "--turn-screen-off"
             
             # Optional parameters for better experience
             cmd.extend([

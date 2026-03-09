@@ -499,13 +499,14 @@ object PermissionDatabase {
     }
 
     /**
-     * Calculate risk score weights for a risk level
+     * Calculate risk score weights for a risk level.
+     * These are intentionally low - accumulated across many permissions and then normalized.
      */
     fun getRiskWeight(level: RiskLevel): Int = when (level) {
-        RiskLevel.CRITICAL -> 25
-        RiskLevel.HIGH -> 15
-        RiskLevel.MEDIUM -> 8
-        RiskLevel.LOW -> 3
-        RiskLevel.INFO -> 1
+        RiskLevel.CRITICAL -> 12
+        RiskLevel.HIGH -> 7
+        RiskLevel.MEDIUM -> 3
+        RiskLevel.LOW -> 1
+        RiskLevel.INFO -> 0
     }
 }

@@ -61,6 +61,7 @@ Thumbs.db
 # Generated Reports & Test Files
 cli/reports/
 cli/test5/
+cli/DO NOT DELETE IMP/
 android/build/reports/
 
 # Environment variables

@@ -1,26 +1,23 @@
-package com.vsecurity.scanner.ui.viewmodel
+﻿package com.vsecurity.scanner.ui.viewmodel
 
 import android.content.Context
 import android.content.Intent
 import android.os.Build
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.vsecurity.scanner.data.model.GuardianSettings
+import com.vsecurity.scanner.data.model.AppSensorStats
+import com.vsecurity.scanner.data.model.DailySensorSummary
 import com.vsecurity.scanner.data.model.SensorAccessLog
-import com.vsecurity.scanner.data.model.SensorType
 import com.vsecurity.scanner.data.preferences.PreferencesManager
 import com.vsecurity.scanner.data.repository.GuardianRepository
 import com.vsecurity.scanner.guardian.PrivacyGuardianService
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
-import java.util.Date
 import javax.inject.Inject
 
-/**
- * Guardian ViewModel
- */
 @HiltViewModel
 class GuardianViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
@@ -33,105 +30,145 @@ class GuardianViewModel @Inject constructor(
 
     init {
         loadState()
-        observeSensorLogs()
+        loadActivityData()
+        // Periodically refresh activity data while guardian is active
+        startPeriodicRefresh()
+    }
+
+    private fun startPeriodicRefresh() {
+        viewModelScope.launch {
+            while (true) {
+                delay(15_000) // Refresh every 15 seconds
+                if (_uiState.value.isGuardianActive) {
+                    loadActivityData()
+                }
+            }
+        }
     }
 
     private fun loadState() {
         viewModelScope.launch {
             combine(
                 preferencesManager.guardianEnabled,
-                preferencesManager.guardianSettings
-            ) { enabled, settings ->
+                preferencesManager.monitorCamera,
+                preferencesManager.monitorMicrophone,
+                preferencesManager.monitorLocation,
+                preferencesManager.alertOnBackground
+            ) { enabled, camera, mic, location, background ->
                 _uiState.update {
                     it.copy(
-                        isEnabled = enabled,
-                        settings = settings
+                        isGuardianActive = enabled,
+                        monitorCamera = camera,
+                        monitorMicrophone = mic,
+                        monitorLocation = location,
+                        alertOnBackground = background
+                    )
+                }
+            }.collect()
+        }
+        viewModelScope.launch {
+            combine(
+                preferencesManager.alertOnScreenOff,
+                preferencesManager.alertOnFrequent
+            ) { screenOff, frequent ->
+                _uiState.update {
+                    it.copy(
+                        alertOnScreenOff = screenOff,
+                        alertOnFrequent = frequent
                     )
                 }
             }.collect()
         }
     }
 
-    private fun observeSensorLogs() {
+    private fun loadActivityData() {
         viewModelScope.launch {
-            guardianRepository.getRecentSensorLogs(100).collect { logs ->
-                _uiState.update { it.copy(recentLogs = logs) }
-            }
+            try {
+                val appStats = guardianRepository.getAllAppStats()
+                val dailySummaries = guardianRepository.getRecentDailySummaries(7)
+                _uiState.update {
+                    it.copy(
+                        recentlyActiveApps = appStats,
+                        dailySummaries = dailySummaries
+                    )
+                }
+            } catch (_: Exception) { }
         }
     }
 
-    fun toggleGuardian(enabled: Boolean) {
+    fun toggleGuardian() {
+        val newState = !_uiState.value.isGuardianActive
         viewModelScope.launch {
-            preferencesManager.setGuardianEnabled(enabled)
-            
-            if (enabled) {
-                startGuardianService()
+            preferencesManager.setGuardianEnabled(newState)
+            if (newState) {
+                val intent = Intent(context, PrivacyGuardianService::class.java)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context.startForegroundService(intent)
+                } else {
+                    context.startService(intent)
+                }
             } else {
-                stopGuardianService()
+                context.stopService(Intent(context, PrivacyGuardianService::class.java))
             }
-            
-            _uiState.update { it.copy(isEnabled = enabled) }
+            _uiState.update { it.copy(isGuardianActive = newState) }
         }
     }
 
-    private fun startGuardianService() {
-        val intent = Intent(context, PrivacyGuardianService::class.java)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            context.startForegroundService(intent)
-        } else {
-            context.startService(intent)
-        }
-    }
-
-    private fun stopGuardianService() {
-        val intent = Intent(context, PrivacyGuardianService::class.java)
-        context.stopService(intent)
-    }
-
-    fun updateSettings(settings: GuardianSettings) {
+    fun setMonitorCamera(enabled: Boolean) {
         viewModelScope.launch {
-            preferencesManager.setGuardianSettings(settings)
-            _uiState.update { it.copy(settings = settings) }
+            preferencesManager.setMonitorCamera(enabled)
+            _uiState.update { it.copy(monitorCamera = enabled) }
         }
     }
 
-    fun toggleSensorMonitoring(sensorType: SensorType, enabled: Boolean) {
-        val currentSettings = _uiState.value.settings
-        val newSettings = when (sensorType) {
-            SensorType.CAMERA -> currentSettings.copy(monitorCamera = enabled)
-            SensorType.MICROPHONE -> currentSettings.copy(monitorMicrophone = enabled)
-            SensorType.LOCATION -> currentSettings.copy(monitorLocation = enabled)
-        }
-        updateSettings(newSettings)
-    }
-
-    fun getSensorUsageByType(): Map<SensorType, List<SensorAccessLog>> {
-        return _uiState.value.recentLogs.groupBy { it.sensorType }
-    }
-
-    fun getTodaySensorUsage(): List<SensorAccessLog> {
-        val today = Date()
-        val startOfDay = java.util.Calendar.getInstance().apply {
-            time = today
-            set(java.util.Calendar.HOUR_OF_DAY, 0)
-            set(java.util.Calendar.MINUTE, 0)
-            set(java.util.Calendar.SECOND, 0)
-            set(java.util.Calendar.MILLISECOND, 0)
-        }.time
-        
-        return _uiState.value.recentLogs.filter { it.timestamp >= startOfDay }
-    }
-
-    fun clearLogs() {
+    fun setMonitorMicrophone(enabled: Boolean) {
         viewModelScope.launch {
-            guardianRepository.clearAllData()
-            _uiState.update { it.copy(recentLogs = emptyList()) }
+            preferencesManager.setMonitorMicrophone(enabled)
+            _uiState.update { it.copy(monitorMicrophone = enabled) }
         }
+    }
+
+    fun setMonitorLocation(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesManager.setMonitorLocation(enabled)
+            _uiState.update { it.copy(monitorLocation = enabled) }
+        }
+    }
+
+    fun setAlertOnBackground(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesManager.setAlertOnBackground(enabled)
+            _uiState.update { it.copy(alertOnBackground = enabled) }
+        }
+    }
+
+    fun setAlertOnScreenOff(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesManager.setAlertOnScreenOff(enabled)
+            _uiState.update { it.copy(alertOnScreenOff = enabled) }
+        }
+    }
+
+    fun setAlertOnFrequent(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesManager.setAlertOnFrequent(enabled)
+            _uiState.update { it.copy(alertOnFrequent = enabled) }
+        }
+    }
+
+    fun refresh() {
+        loadActivityData()
     }
 }
 
 data class GuardianUiState(
-    val isEnabled: Boolean = false,
-    val settings: GuardianSettings = GuardianSettings(),
-    val recentLogs: List<SensorAccessLog> = emptyList()
+    val isGuardianActive: Boolean = false,
+    val monitorCamera: Boolean = true,
+    val monitorMicrophone: Boolean = true,
+    val monitorLocation: Boolean = true,
+    val alertOnBackground: Boolean = true,
+    val alertOnScreenOff: Boolean = true,
+    val alertOnFrequent: Boolean = true,
+    val recentlyActiveApps: List<AppSensorStats> = emptyList(),
+    val dailySummaries: List<DailySensorSummary> = emptyList()
 )

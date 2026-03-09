@@ -702,13 +702,36 @@ def screen_share(device: str):
             return
         
         console.print("[green]✓ scrcpy found![/green]")
+        
+        # Ask user if they want to turn off the physical phone screen
+        console.print("\n[bold cyan]Screen Options:[/bold cyan]")
+        console.print("[1] Keep phone screen ON (see on both laptop and phone)")
+        console.print("[2] Turn phone screen OFF (see only on laptop, saves battery)")
+        
+        turn_off_screen = False
+        while True:
+            choice = console.input("\n[bold]Select option (1 or 2): [/bold]")
+            if choice == "1":
+                turn_off_screen = False
+                break
+            elif choice == "2":
+                turn_off_screen = True
+                break
+            else:
+                console.print("[red]Invalid choice[/red]")
+        
+        if turn_off_screen:
+            console.print("\n[yellow]💡 The phone screen will turn off (you can still control it from laptop)[/yellow]")
+        
         console.print("[yellow]⏳ Launching live screen mirroring...[/yellow]")
         
         # Start screen mirroring
-        if adb.start_screen_mirroring():
+        if adb.start_screen_mirroring(turn_off_screen=turn_off_screen):
             console.print("[green]✓ Screen mirroring started![/green]")
             console.print("[cyan]📱 Live screen is now displayed[/cyan]")
             console.print("[cyan]⌨️  You can interact with the device using your mouse and keyboard[/cyan]")
+            if turn_off_screen:
+                console.print("[dim]Tip: Physical phone screen is OFF but remains controllable[/dim]")
             console.print("[dim]Close the scrcpy window to stop mirroring[/dim]")
         else:
             console.print("[red]❌ Failed to start scrcpy. Check your device connection.[/red]")
