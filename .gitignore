@@ -12,6 +12,14 @@ android/local.properties
 android/captures/
 android/lint-baseline.xml
 
+# Large Binary Files (not suitable for git)
+*.rar
+*.mp4
+*.mkv
+*.mov
+DO NOT DELETE IMP/*.rar
+DO NOT DELETE IMP/*.mp4
+
 # Platform Tools (Auto-downloaded by adb_setup)
 platform-tools/
 platform-tools/**/*
