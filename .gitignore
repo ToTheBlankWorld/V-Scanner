@@ -1,4 +1,11 @@
-# Android
+# ==============================
+
+# Android / Gradle
+
+# ==============================
+
+.gradle/
+*/build/
 android/build/
 android/.gradle/
 android/.idea/
@@ -12,24 +19,45 @@ android/local.properties
 android/captures/
 android/lint-baseline.xml
 
-# Platform Tools (Auto-downloaded by adb_setup)
+# Kotlin
+
+*.kotlin_module
+
+# ==============================
+
+# Platform Tools (ADB)
+
+# ==============================
+
 platform-tools/
-platform-tools/**/*
+
+# ==============================
 
 # Python
-__pycache__/
-*.py[cod]
-*$py.class
+
+# ==============================
+
+**pycache**/
+*.pyc
+*.pyo
+*.pyd
 *.so
 .Python
+
+# Virtual environments
+
+venv/
+env/
+ENV/
+.venv/
+
+# Python build artifacts
+
+dist/
 build/
 develop-eggs/
-dist/
-downloads/
 eggs/
 .eggs/
-lib/
-lib64/
 parts/
 sdist/
 var/
@@ -40,45 +68,78 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
-venv/
-ENV/
-env/
-.venv
-pip-log.txt
-pip-delete-this-directory.txt
 
-# IDE
+# ==============================
+
+# CLI Generated Reports / Tests
+
+# ==============================
+
+cli/reports/
+cli/test5/
+
+# ==============================
+
+# IDE / Editor
+
+# ==============================
+
 .vscode/
 .idea/
+*.iws
+*.ipr
 *.swp
 *.swo
 *~
-.DS_Store
-Thumbs.db
-*.iws
-*.ipr
 
-# Generated Reports & Test Files
-cli/reports/
-cli/test5/
-android/build/reports/
+# ==============================
 
-# Environment variables
+# Environment Variables
+
+# ==============================
+
 .env
 .env.local
 
-# OS specific
+# ==============================
+
+# OS Generated Files
+
+# ==============================
+
 .DS_Store
 .AppleDouble
 .LSOverride
 ._*
 .Spotlight-V100
 .Trashes
-ehthumbs.db
 Thumbs.db
+ehthumbs.db
 
-# Sensitive files
+# ==============================
+
+# Logs / Temp Files
+
+# ==============================
+
 *.log
 *.tmp
 *.temp
 *.bak
+
+# ==============================
+
+# Large Files (Prevent GitHub push errors)
+
+# ==============================
+
+*.rar
+*.zip
+*.7z
+*.tar
+*.gz
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.iso
