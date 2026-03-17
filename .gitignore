@@ -25,11 +25,12 @@ android/lint-baseline.xml
 
 # ==============================
 
-# Platform Tools (ADB)
+# Platform Tools (ADB & scrcpy - Auto-Downloaded)
 
 # ==============================
 
 platform-tools/
+cli/tools/
 
 # ==============================
 

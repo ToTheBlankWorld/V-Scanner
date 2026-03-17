@@ -1,16 +1,42 @@
 # 🚀 Quick Start - V Scanner 2.0
 
-## ⚡ 30 Second Setup
+## ⚡ 60 Second Setup
 
 ```bash
-# 1. Install dependencies
+# 1. Navigate to cli folder
+cd cli
+
+# 2. Install dependencies
 pip install -r requirements.txt
 
-# 2. Run the app
+# 3. Run the app
 python main.py
 
-# Done! ✅ ADB auto-configures, you're ready to scan
+# Done! ✅ ADB & scrcpy auto-download, you're ready to scan
 ```
+
+**First run will download tools (~100MB total). Subsequent runs use cached tools - no downloads needed!**
+
+---
+
+## 🆕 NEW: Automatic Tools Download
+
+V Scanner 2.0 now **automatically downloads and manages all required tools**:
+
+### What Gets Auto-Downloaded
+- 📥 **ADB** - Android Debug Bridge (60MB from Google)
+- 📥 **scrcpy** - Screen mirroring tool (30MB from GitHub)
+
+### How It Works
+1. First run → detects missing tools
+2. Auto-downloads from official sources
+3. Extracts to `cli/tools/` folder
+4. Caches for next time → instant load
+5. Works completely offline after first run
+
+**No admin rights needed • Cross-platform • Zero manual setup**
+
+➡️ **[Details: See TOOLS_SYSTEM.md](./TOOLS_SYSTEM.md)**
 
 ---
 
@@ -20,14 +46,30 @@ python main.py
 ```
 ╔════════════════════════════════════════════════════════════════════╗
 ║                                                                    ║
-║         🔒 SECURITY SCANNER WITH GEMINI STYLE UI                 ║
+║                     🔒 V-SCANNER 2.0                        ║
+║            Mobile Security & Privacy Auditor                      ║
 ║                                                                    ║
-║    🔐 Scan • Analyze • Protect • Defend                          ║
+║          🔐 Scan • Analyze • Protect • Defend               ║
 ║                                                                    ║
 ╚════════════════════════════════════════════════════════════════════╝
 ```
 
-### Step 2: Animated Startup
+### Step 2: Auto-Setup Begins
+```
+[bold cyan]Initializing V Scanner...[/bold cyan]
+
+🔧 Tool Setup
+
+[green]✓ ADB available[/green]
+[green]✓ scrcpy available[/green]
+
+🔍 Checking Dependencies...
+[green]✓ Python Packages - All installed[/green]
+[green]✓ ADB (Android Debug Bridge) - Available[/green]
+[green]✓ scrcpy (Screen Mirroring) - Installed[/green]
+```
+
+### Step 3: Animated Startup
 ```
    ▹ Initializing Security Engine... ✓
    ▹ Loading Vulnerability Database... ✓
@@ -36,263 +78,227 @@ python main.py
    ▹ Preparing Analysis Framework... ✓
 ```
 
-### Step 3: Automatic ADB Setup
+### Step 4: Main Menu
 ```
-⚙️  Configuring Android Debug Bridge...
-✓ Found ADB in system PATH
-✓ ADB ready
-```
+╔════════════════════════════════════════════╗
+║         🔒 MAIN MENU - V SCANNER          ║
+╚════════════════════════════════════════════╝
 
-### Step 4: Beautiful Main Menu
-```
-┌─────────────────────────────────────┐
-│    🔒 MAIN MENU - V SCANNER         │
-├─────────────────────────────────────┤
-│ 1  📱  Select Android Device        │
-│ 2  📲  List Applications            │
-│ 3  🔍  Analyze Single App           │
-│ 4  🔒  Full Device Scan             │
-│ 5  ⚙️   Admin Operations             │
-│ 6  📡  Sensor Monitoring            │
-│ 7  📊  Demo Mode                    │
-│ 8  ⚙️   Reconfigure ADB              │
-│ 9  ❌  Exit                         │
-└─────────────────────────────────────┘
+  1   📱  List Applications
+  2   🔍  Analyze Single App
+  3   🔒  Full Device Scan
+  4   ⚙️   Admin Operations
+  5   📡  Sensor Monitoring
+  6   ℹ️   Full Device Info
+  7   📊  Demo Mode
+  8   🔄  Change Device
+  9   ⚙️   Reconfigure ADB
+  10  📸  Screen Share
+  11  ❌  Exit
 ```
 
 ---
 
-## 📱 First Scan (5 Minutes)
+## 📱 Your First Scan (5 Minutes)
 
-### Step 1: Connect Your Android Device
-- Plug in via USB cable
-- Enable USB Debugging (Developer Settings)
-- Tap "Allow" when prompted
-- App auto-detects!
+### Step 1: Connect Android Device
+- Plug in via **USB cable**
+- Go to **Settings → Developer Options**
+- Enable **USB Debugging**
+- Tap **"Allow"** when device prompts
+- App auto-detects! ✅
 
-### Step 2: Select from Menu
+### Step 2: Choose a Scan
 ```
-Select option (1-9): 4
-```
-
-### Step 3: Choose Scan Options
-```
-📊 Configure scan options:
-
-[1] Include system apps?
-  [a] No (third-party only)
-  [b] Yes (all apps)
-Select (a or b): a
-
-[2] Deep APK analysis?
-  [a] No (faster)
-  [b] Yes (finds URLs, slower)
-Select (a or b): b
-
-[3] Report format?
-  [1] Console (display only)
-  [2] HTML (interactive webpage)
-  [3] JSON (for automation)
-  [4] Text (plain text)
-  [5] All formats
-Select (1-5): 5
+Select option (1-11): 3
 ```
 
-### Step 4: Watch the Scan
+### Step 3: Select App & Analyze
 ```
-🔍 Scanning app 12/42: Instagram
-████████████░░░░░░░░ 45.2%
+🔍 Analyzing Instagram...
 
-[Beautiful progress animation]
+[Scanning process with progress bar]
+
+📊 Security Analysis: Instagram
+├─ Dangerous Permissions: 8
+├─ SDK Issues: 1
+├─ Network Risks: 2
+└─ Overall Risk: MEDIUM 🟡
 ```
 
-### Step 5: See Results
+### Step 4: View Results
 ```
-┌─────────────────────────────────────┐
-│   DEVICE SECURITY SCORE             │
-├─────────────────────────────────────┤
-│                                     │
-│        🟡 [62/100]                  │
-│                                     │
-├─────────────────────────────────────┤
-│  Total Apps:     87
-│  🔴 High Risk:    4
-│  🟡 Medium Risk:  12
-│  🟢 Low Risk:    71
-└─────────────────────────────────────┘
+📊 Security Scan Complete!
+
+✓ 87 apps analyzed
+🔴 High Risk: 4 apps
+🟡 Medium Risk: 12 apps
+🟢 Low Risk: 71 apps
+
+Score: 62/100 🟡
 ```
 
 ---
 
 ## 🎯 Common Tasks
 
-### Scan Your Device
+### Full Device Security Audit
 ```
-Main Menu → [4] Full Device Scan
-Set options → Watch it scan → Get results ✅
+Menu → [3] Full Device Scan
+→ Choose scan options
+→ Watch analysis
+→ Get comprehensive report ✅
 ```
 
-### Analyze One App
+### Analyze Single App
 ```
-Main Menu → [3] Analyze Single App
-Enter package name → Review detailed report ✅
+Menu → [2] Analyze Single App
+→ Enter package name
+→ Review detailed security report ✅
 ```
 
 ### View All Apps
 ```
-Main Menu → [2] List Installed Apps
-Choose system apps option → Browse list ✅
+Menu → [1] List Applications
+→ Browse installed apps
+→ See app details ✅
 ```
 
-### See Sample Results (No Device Needed)
+### No Device? Try Demo Mode
 ```
-Main Menu → [7] Demo Mode
-View beautiful sample report ✅
+Menu → [7] Demo Mode
+→ See sample reports without device ✅
 ```
 
 ### Manage Apps
 ```
-Main Menu → [5] Admin Operations
-Choose: Uninstall, Open, or Force Stop ✅
+Menu → [4] Admin Operations
+→ Uninstall/Open/Force Stop apps ✅
+```
+
+### Live Screen Mirroring
+```
+Menu → [10] Screen Share
+→ View phone screen on computer ✅
 ```
 
 ---
 
-## 🔧 Troubleshooting 30-Second Fixes
+## 🔧 Troubleshooting
 
-### Error: "No devices detected"
+### Error: "Device not detected"
 ```
-Solution:
-1. Check USB cable is connected
-2. Enable USB Debugging on device
-3. Tap "Allow" on device screen
-4. Restart: unplug → plug back in
-```
-
-### Error: "ADB not found"
-```
-Solution:
-1. App will auto-download (may take 1 minute)
-2. Or select Menu Option 8 to manually reconfigure
-3. On macOS/Linux: check if adb is in PATH
+✓ Check USB cable is fully connected
+✓ Enable USB Debugging in Settings
+✓ Tap "Allow" when device prompts
+✓ Try different USB port
+✓ Restart ADB: Menu → [9] Reconfigure ADB
 ```
 
-### App won't launch
+### Error: "Tool download failed"
 ```
-Solution:
-1. Verify: pip install -r requirements.txt
-2. Check: Python 3.7+
-3. Restart terminal and try again
+✓ Check internet connection
+✓ Check disk space (need ~100MB)
+✓ Check firewall settings
+✓ App will auto-retry on next startup
+```
+
+### Error: "Python packages missing"
+```bash
+pip install -r requirements.txt --upgrade
+```
+
+### Error: "scrcpy won't start"
+```
+✓ Check if scrcpy downloaded successfully
+✓ Verify disk space
+✓ Close any existing scrcpy windows
+✓ Restart application
 ```
 
 ---
 
-## 📊 New Features (v2.0)
+## 📊 What Each Menu Option Does
 
-### ✨ Automatic ADB Setup
-- No manual download
-- Auto-detects OS
-- Smart fallback
-- Configuration saved
-
-### 🎨 Beautiful GEMINI UI
-- Colorful banners
-- Animated startup
-- Styled menu
-- Progress indicators
-
-### 🚀 Better Error Messages
-- Helpful panels
-- Clear instructions
-- Guided fixes
-
-### 📱 Animated Interactions
-- Device selector animation
-- Loading spinners
-- Progress animations
-- Completion sequences
+| # | Option | Purpose |
+|---|--------|---------|
+| 1 | 📱 List Apps | View all installed applications |
+| 2 | 🔍 Analyze App | Deep security analysis of one app |
+| 3 | 🔒 Full Scan | Complete device security audit |
+| 4 | ⚙️ Admin Ops | Install/uninstall/manage apps |
+| 5 | 📡 Sensors | Monitor device hardware sensors |
+| 6 | ℹ️ Device Info | View device specifications |
+| 7 | 📊 Demo Mode | See sample report (no device needed) |
+| 8 | 🔄 Change Device | Switch to different device |
+| 9 | ⚙️ Reconfigure ADB | Update ADB settings |
+| 10 | 📸 Screen Share | Live phone screen mirroring |
+| 11 | ❌ Exit | Close application |
 
 ---
 
-## 💡 Pro Tips
+## 📋 System Requirements
 
-1. **First Time?** - Use Demo Mode (Option 7) to see what reports look like
-2. **Deep Analysis** - Choose "Yes" for deep scan to find hardcoded URLs
-3. **Reports** - Generate HTML reports for easy sharing and archiving
-4. **Demo Mode** - Use anytime to test without a device
-5. **Reconfigure** - Menu option 8 lets you change ADB settings anytime
+### Minimum
+- Python 3.8+
+- Windows/macOS/Linux
+- 200MB free disk space
+- Android 7.0+ device
 
----
-
-## 📱 Device Requirements
-
-- ✅ Android 5.0+ (API 21+)
-- ✅ USB Debugging enabled
-- ✅ USB cable (USB 2.0+)
-- ✅ Computer OS: Windows, macOS, or Linux
+### Recommended
+- Python 3.10+
+- 1GB free disk space
+- Fast internet (first run only)
+- Android 11+ device
 
 ---
 
-## ✅ Checklist for First Run
+## ✅ First-Run Checklist
 
-- [ ] Install dependencies: `pip install -r requirements.txt`
-- [ ] Run app: `python main.py`
+- [ ] Python 3.8+ installed
+- [ ] Navigate to `cli` folder
+- [ ] Run `pip install -r requirements.txt`
+- [ ] Run `python main.py`
 - [ ] See beautiful banner
-- [ ] Wait for ADB auto-setup (or auto-download)
+- [ ] Wait for auto-download (first time only)
 - [ ] Connect Android device via USB
-- [ ] Enable USB Debugging on device
-- [ ] Tap "Allow" when prompted
-- [ ] Choose option from main menu
-- [ ] Watch the magic happen! ✨
+- [ ] Enable USB Debugging
+- [ ] Tap "Allow" on device
+- [ ] Choose menu option
+- [ ] Enjoy scanning! 🎉
 
 ---
 
-## 🎓 What Each Option Does
+## 🌟 V Scanner 2.0 Highlights
 
-| # | Option | What It Does |
-|---|--------|------------|
-| 1 | 📱 Select Device | Choose which Android device to scan |
-| 2 | 📲 List Apps | See all installed apps |
-| 3 | 🔍 Analyze App | Detailed scan of one app |
-| 4 | 🔒 Full Scan | Security audit of entire device |
-| 5 | ⚙️ Admin Ops | Uninstall, open, or force stop apps |
-| 6 | 📡 Sensors | View and monitor device sensors |
-| 7 | 📊 Demo Mode | See sample reports (no device needed) |
-| 8 | ⚙️ Reconfigure | Change ADB path settings |
-| 9 | ❌ Exit | Close the app |
-
----
-
-## 🌟 What Makes V Scanner 2.0 Special
-
-✅ **Zero Setup** - Auto-configures everything
-✅ **Beautiful** - GEMINI-inspired stunning UI  
-✅ **Fast** - Optimized for speed
+✅ **Zero Setup** - Tools auto-download
+✅ **Fast** - Caches tools locally
+✅ **Beautiful** - GEMINI-inspired stunning UI
 ✅ **Smart** - Intelligent error handling
-✅ **Professional** - Enterprise-grade quality
-✅ **Secure** - All local, no phone home
-✅ **Easy** - Intuitive for anyone to use
+✅ **Portable** - Works anywhere
+✅ **Secure** - All local, no data sent
+✅ **Easy** - Intuitive for anyone
 
 ---
 
-## 📖 Need More Help?
+## 📚 Need More Information?
 
-- **Full Setup Guide:** See `SETUP_GUIDE.md`
-- **Before & After:** See `BEFORE_AFTER.md`
-- **Changes Made:** See `CHANGES_SUMMARY.md`
-- **Full Docs:** Check `docs/` folder
+- **Tools System:** [TOOLS_SYSTEM.md](./TOOLS_SYSTEM.md) - How auto-download works
+- **Full Guide:** [README.md](./README.md) - Complete documentation
+- **Master Guide:** [MASTER_README.md](./MASTER_README.md) - Comprehensive reference
+- **Technical Docs:** [docs/](./docs/) - Architecture & API details
 
 ---
 
-## 🎉 You're Ready!
+## 🚀 Ready to Scan?
 
 ```bash
+cd cli
 python main.py
 ```
 
-Enjoy your beautiful, automated, powerful security scanner! 🚀
+**Let V Scanner protect your Android device!** 🔒
 
 ---
 
-**V Scanner 2.0 - Enterprise Security with Beautiful UI**
-*February 2026*
+**V Scanner 2.0** | Enterprise Android Security Auditor
+*March 2026* | Production Ready ✅

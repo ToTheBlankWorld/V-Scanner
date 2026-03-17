@@ -9,6 +9,7 @@ import os
 import sys
 import subprocess
 import json
+import time
 from typing import Optional
 from rich.console import Console
 from rich.table import Table
@@ -24,6 +25,7 @@ from ui_styles import (
     print_warning_message, print_info_message, print_footer, print_scan_complete_animation
 )
 from dependency_checker import check_all_dependencies
+from auto_setup import check_and_setup
 
 console = Console()
 
@@ -123,6 +125,10 @@ def get_available_devices() -> list:
         return []
 
 
+
+
+
+
 def select_device() -> Optional[str]:
     """Display available devices and let user select one."""
     devices = get_available_devices()
@@ -218,6 +224,8 @@ def list_apps_menu(device: str):
     
     console.print(table)
     console.print(f"\n[bold cyan]Total: {len(packages)} apps[/bold cyan]")
+
+
 
 
 def analyze_app_menu(device: str):
@@ -1267,45 +1275,45 @@ def main_menu():
     """Display main interactive menu."""
     while True:
         print_main_menu()
-        
+
         choice = console.input("[bold cyan]Select option (1-11): [/bold cyan]")
-        
+
         if choice == "1":
             return "list"
-        
+
         elif choice == "2":
             return "analyze"
-        
+
         elif choice == "3":
             return "scan"
-        
+
         elif choice == "4":
             return "admin"
-        
+
         elif choice == "5":
             return "sensors"
-        
+
         elif choice == "6":
             return "full_device_info"
-        
+
         elif choice == "7":
             demo_mode()
-        
+
         elif choice == "8":
             return "change_device"
-        
+
         elif choice == "9":
             console.print("\n[cyan]Reconfiguring ADB path...[/cyan]")
             from adb_setup import interactive_adb_setup
             interactive_adb_setup()
-        
+
         elif choice == "10":
             return "screen_share"
-        
+
         elif choice == "11":
             print_footer()
             sys.exit(0)
-        
+
         else:
             console.print("[red]❌ Invalid choice. Please select 1-11.[/red]")
             console.input("[dim]Press Enter to continue...[/dim]")
@@ -1412,30 +1420,40 @@ def main():
     """Main entry point."""
     # Clear terminal for fresh start
     os.system('cls' if os.name == 'nt' else 'clear')
-    
+
+    # Run auto-setup to check/install required tools
+    console.print("[bold cyan]Initializing V Scanner...[/bold cyan]")
+    if not check_and_setup():
+        console.print("[yellow]⚠️  Some setup issues detected, but trying to continue...[/yellow]")
+
     # Check all dependencies before starting
     check_all_dependencies()
-    
+
+    # Clear screen completely before banner (Important!)
+    time.sleep(0.5)  # Small delay to ensure output completes
+    os.system('cls' if os.name == 'nt' else 'clear')
+
     # Display beautiful banner
     print_gradient_banner()
-    
+
     # Run startup animation
     print_startup_animation()
-    
+
     # Configure ADB
     console.print("\n[cyan]⚙️  Configuring Android Debug Bridge...[/cyan]")
     adb_result = find_adb()
-    
+
     if not adb_result:
         print_error_message("❌ ADB Configuration Failed", "Could not setup or find ADB")
         sys.exit(1)
-    
+
     console.print(f"[green]✓ ADB ready: {adb_result}[/green]")
-    
+
+    # Scan for Android devices
     console.print("\n[cyan]🔍 Scanning for Android devices...[/cyan]\n")
-    
+
     devices = get_available_devices()
-    
+
     if not devices:
         print_warning_message(
             "⚠️ No Devices Detected",
@@ -1457,13 +1475,13 @@ def main():
         current_device = select_device()
         if not current_device:
             current_device = None
-    
+
     device_info_shown = False
-    
+
     while True:
         if current_device:
             console.print(f"\n[bold green]📱 Device: {current_device}[/bold green]\n")
-            
+
             # Display device info only once when device is first selected
             if not device_info_shown:
                 display_device_info_panel(current_device)
@@ -1488,7 +1506,7 @@ def main():
                     continue
                 device_info_shown = False
             analyze_app_menu(current_device)
-        
+
         elif menu_choice == "scan":
             if not current_device:
                 current_device = select_device()

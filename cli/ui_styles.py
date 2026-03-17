@@ -29,19 +29,16 @@ COLORS = {
 
 
 def print_gradient_banner():
-    """Print an impressive GEMINI-style banner."""
+    """Print an impressive V-SCANNER banner."""
     banner_text = """
     ╔════════════════════════════════════════════════════════════════════╗
     ║                                                                    ║
-    ║         [bold cyan]█ ▀█▀ █   █   █ █ █ █  █ █ █ ██            [/bold cyan]            ║
-    ║         [bold cyan]█  █  █   █   █ █ █ █ █ █ █  █  █           [/bold cyan]            ║
-    ║         [bold cyan]█  █  █   █ █ █ █ █ █ █ █   ██  █           [/bold cyan]            ║
+    ║                     [bold cyan]🔒 V-SCANNER 2.0[/bold cyan]                     ║
+    ║            [bold magenta]Mobile Security & Privacy Auditor[/bold magenta]               ║
     ║                                                                    ║
-    ║         [bold magenta]MOBILE    APPLICATION     SECURITY     SCANNER[/bold magenta]      ║
+    ║          [bold yellow]🔐 Scan • Analyze • Protect • Defend[/bold yellow]               ║
     ║                                                                    ║
-    ║    [bold yellow]🔐 Scan • Analyze • Protect • Defend[/bold yellow]                        ║
-    ║                                                                    ║
-    ║    Version 2.0 | Enterprise Security | Real-time Analysis        ║
+    ║        Version 2.0 | Enterprise Security | Real-time Analysis    ║
     ║                                                                    ║
     ╚════════════════════════════════════════════════════════════════════╝
     """

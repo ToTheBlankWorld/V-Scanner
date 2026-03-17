@@ -780,44 +780,48 @@ class ADBInterface:
     
     def start_screen_mirroring(self, turn_off_screen: bool = False) -> bool:
         """Start live screen mirroring using scrcpy.
-        
+
         Args:
             turn_off_screen: If True, turns off the physical phone screen while mirroring
         """
         try:
+            from tools_manager import get_scrcpy_path, check_tool_exists
+
+            # Check if scrcpy is available
+            if not check_tool_exists('scrcpy'):
+                return False
+
+            # Get scrcpy path from tools manager
+            scrcpy_cmd = get_scrcpy_path()
+
             # Build scrcpy command
-            cmd = ["scrcpy"]
-            
+            cmd = [scrcpy_cmd]
+
             # Add device if specified
             if self.device:
                 cmd.extend(["-s", self.device])
-            
+
             # Turn off phone screen to save battery (can still control via laptop)
             if turn_off_screen:
                 cmd.append("-S")  # or use "--turn-screen-off"
-            
+
             # Optional parameters for better experience
             cmd.extend([
                 "-m", "1024",  # Limit resolution for performance
                 "--max-fps", "30",  # Limit FPS
             ])
-            
+
             # Start scrcpy process (non-blocking)
             subprocess.Popen(cmd)
             return True
         except Exception as e:
             return False
-    
+
     def check_scrcpy_installed(self) -> bool:
         """Check if scrcpy is installed on the system."""
         try:
-            result = subprocess.run(
-                ["scrcpy", "--version"],
-                capture_output=True,
-                text=True,
-                timeout=5
-            )
-            return result.returncode == 0
+            from tools_manager import check_tool_exists
+            return check_tool_exists('scrcpy')
         except:
             return False
     
