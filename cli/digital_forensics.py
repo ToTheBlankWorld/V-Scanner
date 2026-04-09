@@ -39,8 +39,8 @@ class DeviceForensics:
     def _find_database(self, possible_paths: List[str]) -> Optional[str]:
         """Try multiple database paths and return the first one that exists."""
         for path in possible_paths:
-            # Use 'test -f' to check if file exists (more reliable than ls)
-            stdout, stderr, code = self.adb._run_cmd(["shell", "test", "-f", path])
+            # Use 'su -c test -f' to check if file exists with root privileges
+            stdout, stderr, code = self.adb._run_cmd(["shell", "su", "-c", f"test -f {path}"])
             if code == 0:
                 console.print(f"[dim]Found database at: {path}[/dim]")
                 return path
