@@ -30,7 +30,14 @@ class DeviceForensics:
 
         # Get device info which already has working root detection
         device_info = self.adb.get_comprehensive_device_info()
-        self.is_rooted = device_info.get("is_rooted") == "Yes ⚠️"
+        root_status = device_info.get("is_rooted", "Unknown")
+
+        # Debug: Show exactly what we got
+        console.print(f"[dim]Root status value: '{root_status}'[/dim]")
+        console.print(f"[dim]Type: {type(root_status)}, Length: {len(str(root_status))}[/dim]")
+
+        # Check if it contains "Yes" (handle emoji or formatting issues)
+        self.is_rooted = "Yes" in str(root_status)
 
         self._show_root_status()
         self.extractions = []
