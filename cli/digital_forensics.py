@@ -145,87 +145,62 @@ class DeviceForensics:
             return False
 
     def _select_app_from_list_for_extraction(self, apps: List[tuple]) -> Optional[tuple]:
-        """Show paginated list and let user select an app or enter package manually."""
+        """Simple app selection - show 50, ask for next batch or package name."""
         if not apps:
             console.print("[yellow]No apps found[/yellow]")
             return None
 
         page = 0
         apps_per_page = 50
-        total_pages = (len(apps) + apps_per_page - 1) // apps_per_page
 
         while True:
             start_idx = page * apps_per_page
             end_idx = start_idx + apps_per_page
             current_page_apps = apps[start_idx:end_idx]
 
-            console.print(f"\n[dim]Showing {start_idx + 1}-{min(end_idx, len(apps))} of {len(apps)} apps (page {page + 1}/{total_pages}):[/dim]\n")
+            console.print(f"\n[dim]Showing {start_idx + 1}-{min(end_idx, len(apps))} of {len(apps)} apps:[/dim]\n")
 
             # Display apps for this page
             for idx, (appname, package) in enumerate(current_page_apps, 1):
                 console.print(f"  [{idx}] {appname}")
                 console.print(f"      └─ {package}\n")
 
-            # Show options at bottom
-            console.print("[dim]──────────────────────────────────[/dim]")
-
-            has_next = (page + 1) < total_pages
-            has_prev = page > 0
-
-            if has_next:
-                console.print(f"  [51] \\ Next 50 apps")
-            if has_prev:
-                console.print(f"  [52] / Previous 50 apps")
-
-            console.print(f"  [99] Enter package name manually")
-            console.print(f"  [0] Cancel\n")
-
             # Get user input
-            selection = console.input("[bold cyan]Select app (1-50) or option: [/bold cyan]").strip()
+            console.print("[dim]Enter: app number (1-50), 'next' for more apps, or 'pkg:com.example.app' for custom package[/dim]")
+            selection = console.input("[bold cyan]Select: [/bold cyan]").strip().lower()
 
-            try:
-                choice = int(selection)
-                console.print(f"[dim]DEBUG: choice={choice}, page={page}, has_next={has_next}[/dim]")
-
-                if choice == 0:
-                    return None
-
-                if choice == 51:
-                    if has_next:
-                        console.print(f"[dim]Moving to page {page + 2} of {total_pages}...[/dim]")
-                        page += 1
-                        continue
-                    else:
-                        console.print("[yellow]⚠ No more apps - already at last page[/yellow]")
-                        continue
-
-                if choice == 52:
-                    if has_prev:
-                        console.print(f"[dim]Moving to page {page} of {total_pages}...[/dim]")
-                        page -= 1
-                        continue
-                    else:
-                        console.print("[yellow]⚠ Already at first page[/yellow]")
-                        continue
-
-                if choice == 99:
-                    # Manual package name entry
-                    pkg = console.input("[bold cyan]Enter package name (e.g., com.whatsapp): [/bold cyan]").strip()
-                    if pkg:
-                        appname = pkg.split('.')[-1].title()
-                        console.print(f"[dim]Using package: {pkg}[/dim]")
-                        return (appname, pkg)
+            # Check if trying to get next batch
+            if selection == "next":
+                if end_idx < len(apps):
+                    page += 1
+                    console.print(f"[dim]Showing next batch...[/dim]\n")
+                    continue
+                else:
+                    console.print("[yellow]No more apps[/yellow]")
                     continue
 
+            # Check if entering package manually
+            if selection.startswith("pkg:"):
+                pkg = selection.replace("pkg:", "").strip()
+                if pkg:
+                    appname = pkg.split('.')[-1].title()
+                    console.print(f"[green]✓ Using: {pkg}[/green]")
+                    return (appname, pkg)
+                continue
+
+            # Try to parse as app number
+            try:
+                choice = int(selection)
+
                 if choice < 1 or choice > len(current_page_apps):
-                    console.print(f"[red]Invalid selection (choose 1-{len(current_page_apps)})[/red]")
+                    console.print(f"[red]Invalid - choose 1-{len(current_page_apps)}, or type 'next', or 'pkg:com.example'[/red]")
                     continue
 
                 # User selected an app
                 return current_page_apps[choice - 1]
 
             except ValueError:
-                console.print("[red]Invalid input - enter a number[/red]")
+                console.print("[red]Invalid input[/red]")
                 continue
 
     def _get_system_apps(self) -> List[tuple]:
