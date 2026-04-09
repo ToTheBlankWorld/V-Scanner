@@ -36,46 +36,74 @@ class DeviceForensics:
         self._show_root_status()
         self.extractions = []
 
-    def _extract_all_dbs_from_dir(self, directory: str, output_prefix: str) -> bool:
-        """Extract ALL .db files from a directory."""
+    def extract_all_databases(self) -> bool:
+        """Extract ALL .db files from /data/data/ organized by package."""
         try:
-            # List all files in directory
-            stdout, stderr, code = self.adb._run_cmd(["shell", "su", "-c", f"ls {directory}"])
+            console.print("[bold cyan]📦 Extracting all device databases...[/bold cyan]")
 
+            # List all packages in /data/data/
+            stdout, stderr, code = self.adb._run_cmd(["shell", "su", "-c", "ls /data/data/"])
             if code != 0:
-                console.print(f"[dim]Directory not accessible: {directory}[/dim]")
+                console.print(f"[red]✗ Could not access /data/data/[/red]")
                 return False
 
-            # Parse filenames and filter for .db files
-            files = stdout.strip().split('\n')
-            db_files = [f for f in files if f.endswith('.db') or f.endswith('.db-journal')]
+            packages = [p.strip() for p in stdout.strip().split('\n') if p.strip()]
+            console.print(f"[dim]Found {len(packages)} packages...[/dim]\n")
 
-            if not db_files:
-                console.print(f"[dim]No .db files found in {directory}[/dim]")
+            # Create Device_database master directory
+            device_db_dir = self._get_output_path("Device_database")
+            Path(device_db_dir).mkdir(parents=True, exist_ok=True)
+
+            total_files = 0
+            processed_packages = 0
+
+            for package in packages:
+                db_path = f"/data/data/{package}/databases/"
+
+                # List files in package databases directory
+                stdout, stderr, code = self.adb._run_cmd(["shell", "su", "-c", f"ls {db_path}"])
+                if code != 0:
+                    continue
+
+                files = [f.strip() for f in stdout.strip().split('\n') if f.strip()]
+                db_files = [f for f in files if f.endswith('.db') or f.endswith('.db-journal')]
+
+                if not db_files:
+                    continue
+
+                # Create package folder
+                package_dir = Path(device_db_dir) / package / "databases"
+                package_dir.mkdir(parents=True, exist_ok=True)
+
+                # Extract all .db files
+                for db_file in db_files:
+                    src = f"{db_path}{db_file}"
+                    dst = str(package_dir / db_file)
+
+                    stdout, stderr, code = self.adb._run_cmd(["pull", src, dst])
+                    if code == 0:
+                        total_files += 1
+                        console.print(f"[dim]  {package}/{db_file}[/dim]", highlight=False)
+
+                processed_packages += 1
+
+            if total_files > 0:
+                console.print(f"\n[green]✓ Extracted {total_files} database files from {processed_packages} packages[/green]")
+                self.extractions.append({
+                    "type": "all_databases",
+                    "files": total_files,
+                    "packages": processed_packages,
+                    "status": "success",
+                    "location": str(device_db_dir)
+                })
+                return True
+            else:
+                console.print(f"[yellow]⚠ No database files found[/yellow]")
                 return False
 
-            console.print(f"[dim]Found {len(db_files)} database files[/dim]")
-
-            # Create a subdirectory for these files
-            output_dir = self._get_output_path(output_prefix)
-            Path(output_dir).mkdir(parents=True, exist_ok=True)
-
-            # Copy each .db file
-            extracted_count = 0
-            for db_file in db_files:
-                src_path = f"{directory}{db_file}"
-                dst_path = str(Path(output_dir) / db_file)
-
-                stdout, stderr, code = self.adb._run_cmd(["pull", src_path, dst_path])
-                if code == 0:
-                    extracted_count += 1
-                    console.print(f"[dim]  ✓ {db_file}[/dim]")
-
-            return extracted_count > 0
         except Exception as e:
-            console.print(f"[red]Error: {str(e)[:100]}[/red]")
+            console.print(f"[red]✗ Error: {str(e)[:100]}[/red]")
             return False
-
 
     def _check_root_safe(self) -> bool:
         """Try to detect root, but default to True if detection fails (for Apatch compatibility)."""
@@ -349,27 +377,54 @@ class DeviceForensics:
         return False
 
     def generate_report(self) -> bool:
-        """Generate forensics report."""
+        """Generate comprehensive forensics report with device info."""
         try:
             console.print("[cyan]📝 Generating forensics report...[/cyan]")
 
             report_file = self._get_output_path("forensics_report.json")
             device_info = self.adb.get_device_info()
 
+            # Collect additional system info if rooted
+            additional_info = {}
+            if self.is_rooted:
+                # Get installed packages count
+                stdout, stderr, code = self.adb._run_cmd(["shell", "pm", "list", "packages"])
+                if code == 0:
+                    packages = [p.strip() for p in stdout.strip().split('\n') if p.strip().startswith('package:')]
+                    additional_info["installed_packages"] = len(packages)
+
+                # Get running processes
+                stdout, stderr, code = self.adb._run_cmd(["shell", "ps", "-A"])
+                if code == 0:
+                    processes = len([p for p in stdout.strip().split('\n') if p.strip()])
+                    additional_info["running_processes"] = processes
+
+                # Get SELinux status
+                stdout, stderr, code = self.adb._run_cmd(["shell", "getenforce"])
+                if code == 0:
+                    additional_info["selinux_status"] = stdout.strip()
+
             report = {
                 "case_name": self.current_case,
                 "generated": datetime.now().isoformat(),
                 "device": {
                     "model": device_info.get("model", "Unknown"),
+                    "manufacturer": device_info.get("manufacturer", "Unknown"),
+                    "brand": device_info.get("brand", "Unknown"),
                     "android_version": device_info.get("android_version", "Unknown"),
-                    "build_id": device_info.get("build_id", "Unknown")
+                    "api_level": device_info.get("api_level", "Unknown"),
+                    "build_id": device_info.get("build_id", "Unknown"),
+                    "kernel_version": device_info.get("kernel_version", "Unknown"),
+                    "security_patch": device_info.get("security_patch", "Unknown")
                 },
                 "device_rooted": self.is_rooted,
+                "root_method": "Apatch/Magisk/SuperUser",
+                "system_info": additional_info,
                 "extractions": self.extractions,
                 "summary": {
                     "total_operations": len(self.extractions),
                     "successful": len([e for e in self.extractions if e.get("status") == "success"]),
-                    "limited": len([e for e in self.extractions if e.get("status") == "limited"])
+                    "database_files": sum([e.get("files", 0) for e in self.extractions if e.get("type") == "all_databases"])
                 }
             }
 
@@ -464,56 +519,35 @@ class DeviceForensics:
 
 
 def show_forensics_menu(adb_interface):
-    """Show digital forensics menu."""
+    """Show digital forensics menu - simplified version."""
     forensics = DeviceForensics(adb_interface)
 
     # Create case
     forensics.create_case()
 
     while True:
-        # Show menu based on root status
+        # Show menu
         root_status = "[green]ROOTED ✓[/green]" if forensics.is_rooted else "[yellow]NOT ROOTED[/yellow]"
 
         console.print(f"\n[bold cyan]🔍 DIGITAL FORENSICS - {root_status}[/bold cyan]\n")
 
-        if forensics.is_rooted:
-            console.print("  ☎️  [1] Extract Call Logs      - Pull call history")
-            console.print("  📖 [2] Extract Contacts       - Pull contacts database")
-            console.print("  💬 [3] Extract Messages       - Pull SMS/MMS database")
-            console.print("  🌐 [4] Extract Browser Hist   - Pull browser history")
-            console.print("  📋 [5] Extract System Logs    - Pull system logs")
-            console.print("  📝 [6] Generate Report        - Create forensics report")
-            console.print("  ❌ [0] Back to Main Menu      - Return\n")
-        else:
-            console.print("  ☎️  [1] Extract Call Logs      - Limited (non-rooted)")
-            console.print("  📖 [2] Extract Contacts       - Limited (requires root)")
-            console.print("  💬 [3] Extract Messages       - Limited (requires root)")
-            console.print("  🌐 [4] Extract Browser Hist   - Limited (requires root)")
-            console.print("  📋 [5] Extract System Logs    - Works (logcat)")
-            console.print("  📝 [6] Generate Report        - Create forensics report")
-            console.print("  ❌ [0] Back to Main Menu      - Return\n")
+        console.print("  📦 [1] Extract All Databases   - Extracts all .db files from /data/data/")
+        console.print("  📋 [2] Extract System Logs     - Pull logcat system logs")
+        console.print("  📝 [3] Generate Report         - Create forensics case report")
+        console.print("  ❌ [0] Back to Main Menu       - Return\n")
 
-        choice = console.input("[bold cyan]Select operation (0-6): [/bold cyan]").strip()
+        choice = console.input("[bold cyan]Select operation (0-3): [/bold cyan]").strip()
 
         if choice == "0":
             return
 
         elif choice == "1":
-            forensics.extract_call_logs()
+            forensics.extract_all_databases()
 
         elif choice == "2":
-            forensics.extract_contacts()
-
-        elif choice == "3":
-            forensics.extract_messages()
-
-        elif choice == "4":
-            forensics.extract_browser_history()
-
-        elif choice == "5":
             forensics.extract_system_logs()
 
-        elif choice == "6":
+        elif choice == "3":
             forensics.generate_report()
 
         else:
