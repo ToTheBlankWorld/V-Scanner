@@ -49,10 +49,8 @@ class DeviceForensics:
 
             if app_type == "1":
                 apps = self._get_system_apps()
-                app_category = "system"
             elif app_type == "2":
                 apps = self._get_third_party_apps()
-                app_category = "3rd_party"
             else:
                 console.print("[red]Invalid choice[/red]")
                 return False
@@ -61,15 +59,93 @@ class DeviceForensics:
                 console.print("[yellow]No apps found[/yellow]")
                 return False
 
-            # Step 2: Show paginated list (50 apps per page)
-            return self._select_app_from_list(apps)
+            # Step 2: Show paginated list and select app
+            selection = self._select_app_from_list_for_extraction(apps)
+            if not selection:
+                return False
+
+            appname, package = selection
+            console.print(f"\n[cyan]Extracting databases for: {appname}[/cyan]")
+            return self._extract_single_app_databases(package, appname)
 
         except Exception as e:
             console.print(f"[red]✗ Error: {str(e)[:100]}[/red]")
             return False
 
-    def _select_app_from_list(self, apps: List[tuple]) -> bool:
-        """Show paginated list and let user select an app."""
+    def extract_app_shared_prefs(self) -> bool:
+        """Extract shared preferences from user-selected app."""
+        try:
+            console.print("[bold cyan]⚙️  Extract App Shared Preferences[/bold cyan]\n")
+
+            # Step 1: Choose System or 3rd Party
+            console.print("  [1] System Apps")
+            console.print("  [2] Third-Party Apps\n")
+
+            app_type = console.input("[bold cyan]Select app type (1-2): [/bold cyan]").strip()
+
+            if app_type == "1":
+                apps = self._get_system_apps()
+            elif app_type == "2":
+                apps = self._get_third_party_apps()
+            else:
+                console.print("[red]Invalid choice[/red]")
+                return False
+
+            if not apps:
+                console.print("[yellow]No apps found[/yellow]")
+                return False
+
+            # Step 2: Show paginated list and select app
+            selection = self._select_app_from_list_for_extraction(apps)
+            if not selection:
+                return False
+
+            appname, package = selection
+            console.print(f"\n[cyan]Extracting shared prefs for: {appname}[/cyan]")
+            return self._extract_single_app_shared_prefs(package, appname)
+
+        except Exception as e:
+            console.print(f"[red]✗ Error: {str(e)[:100]}[/red]")
+            return False
+
+    def extract_app_files(self) -> bool:
+        """Extract files folder from user-selected app."""
+        try:
+            console.print("[bold cyan]📁 Extract App Files[/bold cyan]\n")
+
+            # Step 1: Choose System or 3rd Party
+            console.print("  [1] System Apps")
+            console.print("  [2] Third-Party Apps\n")
+
+            app_type = console.input("[bold cyan]Select app type (1-2): [/bold cyan]").strip()
+
+            if app_type == "1":
+                apps = self._get_system_apps()
+            elif app_type == "2":
+                apps = self._get_third_party_apps()
+            else:
+                console.print("[red]Invalid choice[/red]")
+                return False
+
+            if not apps:
+                console.print("[yellow]No apps found[/yellow]")
+                return False
+
+            # Step 2: Show paginated list and select app
+            selection = self._select_app_from_list_for_extraction(apps)
+            if not selection:
+                return False
+
+            appname, package = selection
+            console.print(f"\n[cyan]Extracting files for: {appname}[/cyan]")
+            return self._extract_single_app_files(package, appname)
+
+        except Exception as e:
+            console.print(f"[red]✗ Error: {str(e)[:100]}[/red]")
+            return False
+
+    def _select_app_from_list_for_extraction(self, apps: List[tuple]) -> Optional[tuple]:
+        """Show paginated list and let user select an app. Returns (appname, package) or None."""
         page = 0
         apps_per_page = 50
 
@@ -80,7 +156,7 @@ class DeviceForensics:
 
             if not current_page_apps:
                 console.print("[yellow]No more apps[/yellow]")
-                return False
+                return None
 
             console.print(f"\n[dim]Showing {start_idx + 1}-{min(end_idx, len(apps))} of {len(apps)} apps:[/dim]\n")
 
@@ -100,7 +176,7 @@ class DeviceForensics:
                 choice = int(selection)
 
                 if choice == 0:
-                    return False
+                    return None
 
                 if choice == 51 and end_idx < len(apps):
                     page += 1
@@ -111,9 +187,7 @@ class DeviceForensics:
                     continue
 
                 # User selected an app
-                appname, package = current_page_apps[choice - 1]
-                console.print(f"\n[cyan]Extracting databases for: {appname}[/cyan]")
-                return self._extract_single_app_databases(package, appname)
+                return current_page_apps[choice - 1]
 
             except ValueError:
                 console.print("[red]Invalid input[/red]")
@@ -233,6 +307,125 @@ class DeviceForensics:
                 return True
             else:
                 console.print("[red]Failed to extract databases[/red]")
+                return False
+
+        except Exception as e:
+            console.print(f"[red]✗ Error: {str(e)[:100]}[/red]")
+            return False
+
+    def _extract_single_app_shared_prefs(self, package: str, appname: str) -> bool:
+        """Extract ALL files from app's shared preferences folder."""
+        try:
+            prefs_path = f"/data/data/{package}/shared_prefs/"
+
+            # Check if shared_prefs folder exists
+            stdout, stderr, code = self.adb._run_cmd(["shell", "su", "-c", f"ls {prefs_path}"])
+            if code != 0:
+                console.print(f"[yellow]⚠ No shared_prefs folder found for {appname}[/yellow]")
+                return False
+
+            # List ALL files in shared_prefs folder
+            files = [f.strip() for f in stdout.strip().split('\n') if f.strip()]
+
+            if not files:
+                console.print(f"[yellow]⚠ No files found[/yellow]")
+                return False
+
+            # Create output directory: Device_database/[package]/shared_prefs/
+            output_dir = self._get_output_path(f"Device_database/{package}/shared_prefs")
+            Path(output_dir).mkdir(parents=True, exist_ok=True)
+
+            console.print(f"[dim]Found {len(files)} files, copying...[/dim]\n")
+
+            # Copy ALL files from shared_prefs folder
+            extracted_count = 0
+            for file in files:
+                src = f"{prefs_path}{file}"
+                dst = str(Path(output_dir) / file)
+
+                stdout, stderr, code = self.adb._run_cmd(["pull", src, dst])
+                if code == 0:
+                    extracted_count += 1
+                    console.print(f"[dim]  ✓ {file}[/dim]")
+
+            if extracted_count > 0:
+                console.print(f"\n[green]✓ Extracted {extracted_count} files[/green]")
+                self.extractions.append({
+                    "type": "app_shared_prefs",
+                    "app_name": appname,
+                    "package": package,
+                    "files": extracted_count,
+                    "status": "success",
+                    "location": str(output_dir)
+                })
+                return True
+            else:
+                console.print("[red]Failed to extract shared preferences[/red]")
+                return False
+
+        except Exception as e:
+            console.print(f"[red]✗ Error: {str(e)[:100]}[/red]")
+            return False
+
+    def _extract_single_app_files(self, package: str, appname: str) -> bool:
+        """Extract ALL files from app's files folder."""
+        try:
+            files_path = f"/data/data/{package}/files/"
+
+            # Check if files folder exists
+            stdout, stderr, code = self.adb._run_cmd(["shell", "su", "-c", f"ls -R {files_path}"])
+            if code != 0:
+                console.print(f"[yellow]⚠ No files folder found for {appname}[/yellow]")
+                return False
+
+            # Create output directory: Device_database/[package]/files/
+            output_dir = self._get_output_path(f"Device_database/{package}/files")
+            Path(output_dir).mkdir(parents=True, exist_ok=True)
+
+            console.print(f"[dim]Scanning and copying files...[/dim]\n")
+
+            # Use adb pull with wildcard to get all files
+            src_pattern = f"{files_path}*"
+
+            # Alternative: traverse directory recursively
+            stdout, stderr, code = self.adb._run_cmd(["shell", "su", "-c", f"find {files_path} -type f"])
+            if code != 0:
+                console.print(f"[yellow]⚠ No files found[/yellow]")
+                return False
+
+            file_list = [f.strip() for f in stdout.strip().split('\n') if f.strip()]
+
+            if not file_list:
+                console.print(f"[yellow]⚠ No files found[/yellow]")
+                return False
+
+            extracted_count = 0
+            for file_path in file_list:
+                # Get relative path
+                rel_path = file_path.replace(files_path, "")
+                dst = str(Path(output_dir) / rel_path)
+
+                # Create subdirectories if needed
+                Path(dst).parent.mkdir(parents=True, exist_ok=True)
+
+                stdout, stderr, code = self.adb._run_cmd(["pull", file_path, dst])
+                if code == 0:
+                    extracted_count += 1
+                    console.print(f"[dim]  ✓ {rel_path}[/dim]")
+
+            if extracted_count > 0:
+                console.print(f"\n[green]✓ Extracted {extracted_count} files[/green]")
+                self.extractions.append({
+                    "type": "app_files",
+                    "app_name": appname,
+                    "package": package,
+                    "files": extracted_count,
+                    "status": "success",
+                    "location": str(output_dir)
+                })
+                return True
+            else:
+                console.print("[red]Failed to extract files[/red]")
                 return False
 
         except Exception as e:
@@ -653,7 +846,7 @@ class DeviceForensics:
 
 
 def show_forensics_menu(adb_interface):
-    """Show digital forensics menu - simplified version."""
+    """Show digital forensics menu - expanded version."""
     forensics = DeviceForensics(adb_interface)
 
     # Create case
@@ -665,12 +858,14 @@ def show_forensics_menu(adb_interface):
 
         console.print(f"\n[bold cyan]🔍 DIGITAL FORENSICS - {root_status}[/bold cyan]\n")
 
-        console.print("  📱 [1] Extract App Databases   - Select and extract app databases")
-        console.print("  📋 [2] Extract System Logs     - Pull logcat system logs")
-        console.print("  📝 [3] Generate Report         - Create forensics case report")
-        console.print("  ❌ [0] Back to Main Menu       - Return\n")
+        console.print("  📱 [1] Extract App Databases         - Select and extract app databases")
+        console.print("  ⚙️  [2] Extract App Shared Prefs     - Extract app configuration/settings")
+        console.print("  📁 [3] Extract App Files             - Extract app data files folder")
+        console.print("  📋 [4] Extract System Logs           - Pull logcat system logs")
+        console.print("  📝 [5] Generate Report               - Create forensics case report")
+        console.print("  ❌ [0] Back to Main Menu             - Return\n")
 
-        choice = console.input("[bold cyan]Select operation (0-3): [/bold cyan]").strip()
+        choice = console.input("[bold cyan]Select operation (0-5): [/bold cyan]").strip()
 
         if choice == "0":
             return
@@ -679,9 +874,15 @@ def show_forensics_menu(adb_interface):
             forensics.extract_app_databases()
 
         elif choice == "2":
-            forensics.extract_system_logs()
+            forensics.extract_app_shared_prefs()
 
         elif choice == "3":
+            forensics.extract_app_files()
+
+        elif choice == "4":
+            forensics.extract_system_logs()
+
+        elif choice == "5":
             forensics.generate_report()
 
         else:
