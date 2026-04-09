@@ -31,24 +31,23 @@ class DeviceForensics:
         self.extractions = []
 
     def _check_root(self) -> bool:
-        """Check if device is rooted - use the working method from scanner.py."""
+        """Check if device is rooted by trying to access rooted resource."""
         try:
             console.print("[cyan]🔍 Checking device root status...[/cyan]")
 
-            # Use the EXACT same get_comprehensive_device_info() that works in scanner.py
-            device_info = self.adb.get_comprehensive_device_info()
+            # Simplest method: Try to access a file that only root can access
+            # /data/data/com.android.contacts/databases/contacts2.db requires root
+            stdout, stderr, code = self.adb._run_cmd(["shell", "ls", "/data/data/"])
 
-            # Check the is_rooted field that's already calculated correctly
-            is_rooted = device_info.get("is_rooted") == "Yes ⚠️"
-
-            if is_rooted:
+            # If we can list /data/data/, device is rooted
+            if code == 0 and stdout:
                 console.print("[green]✓ Device is ROOTED[/green]")
                 return True
             else:
                 console.print("[yellow]⚠ Device is NOT rooted (limited access)[/yellow]")
                 return False
         except Exception as e:
-            console.print(f"[yellow]⚠ Root detection failed: {e}[/yellow]")
+            console.print(f"[yellow]⚠ Could not check root: {e}[/yellow]")
             return False
 
     def create_case(self, case_name: str = None) -> bool:
