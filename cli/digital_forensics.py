@@ -195,39 +195,23 @@ class DeviceForensics:
 
     def _get_system_apps(self) -> List[tuple]:
         """Get list of system apps (app name, package name)."""
-        system_packages = [
-            "com.android",
-            "android.",
-            "com.google",
-            "com.samsung",
-        ]
-
         try:
             stdout, stderr, code = self.adb._run_cmd(["shell", "pm", "list", "packages", "-s"])
             if code != 0:
+                console.print(f"[red]Error getting system apps: {stderr}[/red]")
                 return []
 
             apps = []
             for line in stdout.strip().split('\n'):
                 if line.startswith('package:'):
                     package = line.replace('package:', '').strip()
-
-                    # Get app name
-                    stdout2, _, code2 = self.adb._run_cmd([
-                        "shell", "cmd", "package", "dump", package, "|", "grep", "label="
-                    ])
-
-                    if code2 == 0 and stdout2:
-                        # Extract label from "label=com.android.systemui=System UI"
-                        labels = [l.split('=')[-1] for l in stdout2.strip().split('\n') if 'label=' in l]
-                        appname = labels[0] if labels else package.split('.')[-1].title()
-                    else:
-                        appname = package.split('.')[-1].title()
-
+                    # Use package name as fallback if we can't get app name
+                    appname = package.split('.')[-1].title()
                     apps.append((appname, package))
 
             return sorted(apps, key=lambda x: x[0])
-        except:
+        except Exception as e:
+            console.print(f"[red]Error getting system apps: {e}[/red]")
             return []
 
     def _get_third_party_apps(self) -> List[tuple]:
@@ -235,28 +219,20 @@ class DeviceForensics:
         try:
             stdout, stderr, code = self.adb._run_cmd(["shell", "pm", "list", "packages", "-3"])
             if code != 0:
+                console.print(f"[red]Error getting 3rd party apps: {stderr}[/red]")
                 return []
 
             apps = []
             for line in stdout.strip().split('\n'):
                 if line.startswith('package:'):
                     package = line.replace('package:', '').strip()
-
-                    # Get app name
-                    stdout2, _, code2 = self.adb._run_cmd([
-                        "shell", "cmd", "package", "dump", package, "|", "grep", "label="
-                    ])
-
-                    if code2 == 0 and stdout2:
-                        labels = [l.split('=')[-1] for l in stdout2.strip().split('\n') if 'label=' in l]
-                        appname = labels[0] if labels else package.split('.')[-1].title()
-                    else:
-                        appname = package.split('.')[-1].title()
-
+                    # Use package name as fallback if we can't get app name
+                    appname = package.split('.')[-1].title()
                     apps.append((appname, package))
 
             return sorted(apps, key=lambda x: x[0])
-        except:
+        except Exception as e:
+            console.print(f"[red]Error getting 3rd party apps: {e}[/red]")
             return []
 
     def _extract_single_app_databases(self, package: str, appname: str) -> bool:
@@ -264,38 +240,47 @@ class DeviceForensics:
         try:
             db_path = f"/data/data/{package}/databases/"
 
-            # Check if database folder exists
-            stdout, stderr, code = self.adb._run_cmd(["shell", "su", "-c", f"ls {db_path}"])
+            # Check if database folder exists with root
+            stdout, stderr, code = self.adb._run_cmd(["shell", "su", "-c", f"ls -la {db_path}"])
             if code != 0:
                 console.print(f"[yellow]⚠ No databases folder found for {appname}[/yellow]")
+                console.print(f"[dim]Path: {db_path}[/dim]")
                 return False
 
             # List ALL files in databases folder
-            files = [f.strip() for f in stdout.strip().split('\n') if f.strip()]
+            files = [f.strip() for f in stdout.strip().split('\n') if f.strip() and not f.startswith('total')]
 
-            if not files:
-                console.print(f"[yellow]⚠ No files found[/yellow]")
+            # Filter out directory listing headers (lines with 'd' or permissions)
+            db_files = [f.split()[-1] for f in files if f.split()[-1] and not f.split()[-1].startswith('.')]
+
+            if not db_files:
+                console.print(f"[yellow]⚠ No files found in databases folder[/yellow]")
                 return False
 
             # Create output directory: Device_database/[package]/databases/
             output_dir = self._get_output_path(f"Device_database/{package}/databases")
             Path(output_dir).mkdir(parents=True, exist_ok=True)
 
-            console.print(f"[dim]Found {len(files)} files, copying...[/dim]\n")
+            console.print(f"[dim]Found {len(db_files)} files, copying...[/dim]\n")
 
             # Copy ALL files from databases folder
             extracted_count = 0
-            for file in files:
-                src = f"{db_path}{file}"
-                dst = str(Path(output_dir) / file)
+            failed_count = 0
+
+            for db_file in db_files:
+                src = f"{db_path}{db_file}"
+                dst = str(Path(output_dir) / db_file)
 
                 stdout, stderr, code = self.adb._run_cmd(["pull", src, dst])
                 if code == 0:
                     extracted_count += 1
-                    console.print(f"[dim]  ✓ {file}[/dim]")
+                    console.print(f"[dim]  ✓ {db_file}[/dim]")
+                else:
+                    failed_count += 1
+                    console.print(f"[dim]  ✗ {db_file} (error)[/dim]")
 
             if extracted_count > 0:
-                console.print(f"\n[green]✓ Extracted {extracted_count} files[/green]")
+                console.print(f"\n[green]✓ Extracted {extracted_count} files{f' ({failed_count} failed)' if failed_count > 0 else ''}[/green]")
                 self.extractions.append({
                     "type": "app_databases",
                     "app_name": appname,
@@ -306,7 +291,7 @@ class DeviceForensics:
                 })
                 return True
             else:
-                console.print("[red]Failed to extract databases[/red]")
+                console.print(f"[red]✗ Failed to extract any files[/red]")
                 return False
 
         except Exception as e:
