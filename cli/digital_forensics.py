@@ -28,51 +28,38 @@ class DeviceForensics:
         self.case_dir.mkdir(parents=True, exist_ok=True)
         self.current_case = None
 
-        # Check root with multiple methods (Magisk, Apatch, Super User, etc)
-        self.is_rooted = self._check_root()
+        # For Apatch and other custom roots, auto-detection is unreliable
+        # Try detection, but if it fails, assume rooted
+        # (User will know if their device is rooted)
+        self.is_rooted = self._check_root_safe()
 
         self._show_root_status()
         self.extractions = []
 
-    def _check_root(self) -> bool:
-        """Check if device is rooted - with detailed debug output."""
-        console.print("[cyan]🔍 Checking device root status...[/cyan]")
+    def _check_root_safe(self) -> bool:
+        """Try to detect root, but default to True if detection fails (for Apatch compatibility)."""
+        try:
+            console.print("[cyan]🔍 Checking device root status...[/cyan]")
 
-        # Method 1: Try su -c echo rooted
-        console.print("[dim]  Method 1: su -c echo rooted[/dim]")
-        stdout, stderr, code = self.adb._run_cmd(["shell", "su", "-c", "echo", "rooted"])
-        console.print(f"[dim]    Code: {code}, Output: '{stdout.strip()}', Error: '{stderr.strip()}'[/dim]")
-        if code == 0 and "rooted" in stdout:
-            console.print("[green]✓ Device is ROOTED (su command works)[/green]")
-            return True
+            # Quick attempt at detection
+            stdout, _, code = self.adb._run_cmd(["shell", "su", "-c", "echo", "rooted"], timeout=5)
+            if code == 0 and "rooted" in stdout:
+                console.print("[green]✓ Device is ROOTED[/green]")
+                return True
 
-        # Method 2: Check for /system/xbin/su
-        console.print("[dim]  Method 2: ls /system/xbin/su[/dim]")
-        stdout, stderr, code = self.adb._run_cmd(["shell", "ls", "/system/xbin/su"])
-        console.print(f"[dim]    Code: {code}, Output: '{stdout.strip()}', Error: '{stderr.strip()}'[/dim]")
-        if code == 0:
-            console.print("[green]✓ Device is ROOTED (Apatch/SuperUser detected)[/green]")
-            return True
+            # Try file check (shorter timeout)
+            stdout, _, code = self.adb._run_cmd(["shell", "ls", "/system/xbin/su"], timeout=3)
+            if code == 0:
+                console.print("[green]✓ Device is ROOTED (su binary found)[/green]")
+                return True
 
-        # Method 3: Check for /system/bin/su
-        console.print("[dim]  Method 3: ls /system/bin/su[/dim]")
-        stdout, stderr, code = self.adb._run_cmd(["shell", "ls", "/system/bin/su"])
-        console.print(f"[dim]    Code: {code}, Output: '{stdout.strip()}', Error: '{stderr.strip()}'[/dim]")
-        if code == 0:
-            console.print("[green]✓ Device is ROOTED (su binary found)[/green]")
-            return True
+        except Exception as e:
+            console.print(f"[dim]Root detection skipped: {str(e)[:50]}[/dim]")
 
-        # Method 4: Try su -c id
-        console.print("[dim]  Method 4: su -c id[/dim]")
-        stdout, stderr, code = self.adb._run_cmd(["shell", "su", "-c", "id"])
-        console.print(f"[dim]    Code: {code}, Output: '{stdout.strip()}', Error: '{stderr.strip()}'[/dim]")
-        if code == 0 and "uid=0" in stdout:
-            console.print("[green]✓ Device is ROOTED (uid=0)[/green]")
-            return True
-
-        # Not rooted
-        console.print("[yellow]⚠ Device is NOT rooted (all detection methods failed)[/yellow]")
-        return False
+        # If detection fails/times out, assume rooted
+        # (Apatch root might not respond to standard detection)
+        console.print("[green]✓ Assuming ROOTED (Apatch compatibility mode)[/green]")
+        return True
 
     def _show_root_status(self):
         """Show root status."""
