@@ -236,11 +236,11 @@ class DeviceForensics:
             return []
 
     def _extract_single_app_databases(self, package: str, appname: str) -> bool:
-        """Extract ALL files from app's databases folder."""
+        """Extract ALL files from app's databases folder using cat instead of pull."""
         try:
             db_path = f"/data/data/{package}/databases/"
 
-            # Use simple ls to list files - more reliable than find
+            # Use simple ls to list files
             stdout, stderr, code = self.adb._run_cmd(["shell", "su", "-c", f"ls -1 {db_path} 2>/dev/null"])
             if code != 0 or not stdout.strip():
                 console.print(f"[yellow]⚠ No databases folder found for {appname}[/yellow]")
@@ -259,21 +259,31 @@ class DeviceForensics:
 
             console.print(f"[dim]Found {len(file_list)} files, copying...[/dim]\n")
 
-            # Copy ALL files
+            # Copy ALL files using cat (more reliable for special chars)
             extracted_count = 0
             failed_files = []
 
             for filename in file_list:
-                # Build full path
                 file_path = f"{db_path}{filename}"
                 dst = str(Path(output_dir) / filename)
 
-                stdout, stderr, code = self.adb._run_cmd(["pull", file_path, dst])
-                if code == 0:
-                    extracted_count += 1
-                    console.print(f"[dim]  ✓ {filename}[/dim]")
-                else:
-                    failed_files.append((filename, stderr[:50] if stderr else "unknown"))
+                try:
+                    # Use cat to read file through adb shell and save locally
+                    stdout, stderr, code = self.adb._run_cmd(
+                        ["shell", "su", "-c", f"cat '{file_path}'"],
+                        return_output=True
+                    )
+
+                    if code == 0 and stdout:
+                        # Write the file content
+                        with open(dst, 'wb') as f:
+                            f.write(stdout.encode('latin-1') if isinstance(stdout, str) else stdout)
+                        extracted_count += 1
+                        console.print(f"[dim]  ✓ {filename}[/dim]")
+                    else:
+                        failed_files.append((filename, "cat failed"))
+                except Exception as e:
+                    failed_files.append((filename, str(e)[:30]))
 
             if extracted_count > 0:
                 console.print(f"\n[green]✓ Extracted {extracted_count} files[/green]")
@@ -289,7 +299,6 @@ class DeviceForensics:
             else:
                 if failed_files:
                     console.print(f"[red]✗ Failed to extract {len(failed_files)} files[/red]")
-                    console.print(f"[dim]First error: {failed_files[0][1]}[/dim]")
                 return False
 
         except Exception as e:
