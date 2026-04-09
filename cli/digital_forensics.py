@@ -35,35 +35,43 @@ class DeviceForensics:
         self.extractions = []
 
     def _check_root(self) -> bool:
-        """Check if device is rooted - support multiple root methods (Magisk, Apatch, etc)."""
+        """Check if device is rooted - with detailed debug output."""
         console.print("[cyan]🔍 Checking device root status...[/cyan]")
 
-        # Method 1: Try su -c echo rooted (Magisk, etc)
-        stdout, _, code = self.adb._run_cmd(["shell", "su", "-c", "echo", "rooted"])
+        # Method 1: Try su -c echo rooted
+        console.print("[dim]  Method 1: su -c echo rooted[/dim]")
+        stdout, stderr, code = self.adb._run_cmd(["shell", "su", "-c", "echo", "rooted"])
+        console.print(f"[dim]    Code: {code}, Output: '{stdout.strip()}', Error: '{stderr.strip()}'[/dim]")
         if code == 0 and "rooted" in stdout:
             console.print("[green]✓ Device is ROOTED (su command works)[/green]")
             return True
 
-        # Method 2: Check for /system/xbin/su (Apatch, SuperUser, etc) - simpler way
-        stdout, _, code = self.adb._run_cmd(["shell", "ls", "/system/xbin/su"])
+        # Method 2: Check for /system/xbin/su
+        console.print("[dim]  Method 2: ls /system/xbin/su[/dim]")
+        stdout, stderr, code = self.adb._run_cmd(["shell", "ls", "/system/xbin/su"])
+        console.print(f"[dim]    Code: {code}, Output: '{stdout.strip()}', Error: '{stderr.strip()}'[/dim]")
         if code == 0:
             console.print("[green]✓ Device is ROOTED (Apatch/SuperUser detected)[/green]")
             return True
 
         # Method 3: Check for /system/bin/su
-        stdout, _, code = self.adb._run_cmd(["shell", "ls", "/system/bin/su"])
+        console.print("[dim]  Method 3: ls /system/bin/su[/dim]")
+        stdout, stderr, code = self.adb._run_cmd(["shell", "ls", "/system/bin/su"])
+        console.print(f"[dim]    Code: {code}, Output: '{stdout.strip()}', Error: '{stderr.strip()}'[/dim]")
         if code == 0:
             console.print("[green]✓ Device is ROOTED (su binary found)[/green]")
             return True
 
-        # Method 4: Try direct su access
-        stdout, _, code = self.adb._run_cmd(["shell", "su", "-c", "id"])
+        # Method 4: Try su -c id
+        console.print("[dim]  Method 4: su -c id[/dim]")
+        stdout, stderr, code = self.adb._run_cmd(["shell", "su", "-c", "id"])
+        console.print(f"[dim]    Code: {code}, Output: '{stdout.strip()}', Error: '{stderr.strip()}'[/dim]")
         if code == 0 and "uid=0" in stdout:
             console.print("[green]✓ Device is ROOTED (uid=0)[/green]")
             return True
 
         # Not rooted
-        console.print("[yellow]⚠ Device is NOT rooted (limited access)[/yellow]")
+        console.print("[yellow]⚠ Device is NOT rooted (all detection methods failed)[/yellow]")
         return False
 
     def _show_root_status(self):
