@@ -63,9 +63,11 @@ class ADBInterface:
         full_cmd = self.adb_cmd + cmd
         try:
             result = subprocess.run(
-                full_cmd, 
-                capture_output=True, 
-                text=True, 
+                full_cmd,
+                capture_output=True,
+                text=True,
+                encoding='utf-8',
+                errors='replace',
                 timeout=timeout
             )
             return result.stdout, result.stderr, result.returncode
