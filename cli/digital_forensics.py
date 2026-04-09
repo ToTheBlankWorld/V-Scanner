@@ -26,8 +26,10 @@ class DigitalForensicsManager:
     def __init__(self, adb_interface):
         """Initialize forensics manager with ADB interface."""
         self.adb = adb_interface
-        self.case_dir = Path("cli/forensics_cases")
-        self.case_dir.mkdir(exist_ok=True)
+        # Create forensics_cases in the same directory as this script
+        script_dir = Path(__file__).parent
+        self.case_dir = script_dir / "forensics_cases"
+        self.case_dir.mkdir(parents=True, exist_ok=True)
         self.current_case = None
 
     def create_case(self, case_name: str, description: str = "") -> bool:
