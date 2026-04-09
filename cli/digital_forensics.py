@@ -31,14 +31,17 @@ class DeviceForensics:
         self.extractions = []
 
     def _check_root(self) -> bool:
-        """Check if device is rooted - using same method as scanner.py."""
+        """Check if device is rooted - use the working method from scanner.py."""
         try:
             console.print("[cyan]🔍 Checking device root status...[/cyan]")
 
-            # Use the SAME method that works in scanner.py
-            stdout, _, code = self.adb._run_cmd(["shell", "su", "-c", "echo", "rooted"])
+            # Use the EXACT same get_comprehensive_device_info() that works in scanner.py
+            device_info = self.adb.get_comprehensive_device_info()
 
-            if code == 0 and "rooted" in stdout:
+            # Check the is_rooted field that's already calculated correctly
+            is_rooted = device_info.get("is_rooted") == "Yes ⚠️"
+
+            if is_rooted:
                 console.print("[green]✓ Device is ROOTED[/green]")
                 return True
             else:
