@@ -44,20 +44,20 @@ class DeviceForensics:
             console.print("[green]✓ Device is ROOTED (su command works)[/green]")
             return True
 
-        # Method 2: Check for /system/xbin/su (Apatch, SuperUser, etc)
-        stdout, _, code = self.adb._run_cmd(["shell", "test", "-f", "/system/xbin/su", "&&", "echo", "yes"])
-        if code == 0 and "yes" in stdout:
+        # Method 2: Check for /system/xbin/su (Apatch, SuperUser, etc) - simpler way
+        stdout, _, code = self.adb._run_cmd(["shell", "ls", "/system/xbin/su"])
+        if code == 0:
             console.print("[green]✓ Device is ROOTED (Apatch/SuperUser detected)[/green]")
             return True
 
         # Method 3: Check for /system/bin/su
-        stdout, _, code = self.adb._run_cmd(["shell", "test", "-f", "/system/bin/su", "&&", "echo", "yes"])
-        if code == 0 and "yes" in stdout:
+        stdout, _, code = self.adb._run_cmd(["shell", "ls", "/system/bin/su"])
+        if code == 0:
             console.print("[green]✓ Device is ROOTED (su binary found)[/green]")
             return True
 
-        # Method 4: Try id command directly (some custom roots)
-        stdout, _, code = self.adb._run_cmd(["shell", "id"])
+        # Method 4: Try direct su access
+        stdout, _, code = self.adb._run_cmd(["shell", "su", "-c", "id"])
         if code == 0 and "uid=0" in stdout:
             console.print("[green]✓ Device is ROOTED (uid=0)[/green]")
             return True
