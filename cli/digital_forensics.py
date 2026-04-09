@@ -34,17 +34,34 @@ class DeviceForensics:
         """Check if device is rooted."""
         try:
             console.print("[cyan]🔍 Checking device root status...[/cyan]")
+
+            # Method 1: Try su command
             stdout, stderr, code = self.adb._run_cmd(["shell", "su", "-c", "id"])
 
-            is_root = code == 0 and "uid=0" in stdout
-
-            if is_root:
+            # Check if uid=0 in output (root user)
+            if code == 0 and stdout and "uid=0" in stdout:
                 console.print("[green]✓ Device is ROOTED[/green]")
-            else:
-                console.print("[yellow]⚠ Device is NOT rooted (limited access)[/yellow]")
+                return True
 
-            return is_root
-        except:
+            # Method 2: Check for /system/xbin/su file
+            stdout2, stderr2, code2 = self.adb._run_cmd(["shell", "test", "-f", "/system/xbin/su", "&&", "echo", "yes"])
+
+            if code2 == 0 and "yes" in stdout2:
+                console.print("[green]✓ Device is ROOTED[/green]")
+                return True
+
+            # Method 3: Check id output directly (some devices show uid=0 without su)
+            stdout3, stderr3, code3 = self.adb._run_cmd(["shell", "id"])
+
+            if code3 == 0 and "uid=0" in stdout3:
+                console.print("[green]✓ Device is ROOTED[/green]")
+                return True
+
+            # If none worked, not rooted
+            console.print("[yellow]⚠ Device is NOT rooted (limited access)[/yellow]")
+            return False
+        except Exception as e:
+            console.print(f"[yellow]⚠ Root detection error: {e}[/yellow]")
             return False
 
     def create_case(self, case_name: str = None) -> bool:
@@ -256,8 +273,11 @@ class DeviceForensics:
         try:
             console.print("[cyan]📋 Extracting system logs...[/cyan]")
 
-            # Logcat works without root
-            stdout, stderr, code = self.adb._run_cmd(["logcat", "-d", "*:V"])
+            # Clear old logs first, then get new ones
+            self.adb._run_cmd(["logcat", "-c"])
+
+            # Get recent logs (dumped logcat)
+            stdout, stderr, code = self.adb._run_cmd(["logcat", "-d"])
 
             if code == 0 and stdout:
                 output_file = self._get_output_path("system_logs.txt")
@@ -274,7 +294,7 @@ class DeviceForensics:
                 })
                 return True
             else:
-                console.print(f"[yellow]⚠ Could not extract logs: {stderr}[/yellow]")
+                console.print(f"[yellow]⚠ Could not extract logs: {stderr if stderr else 'No output'}[/yellow]")
         except Exception as e:
             console.print(f"[red]✗ Error: {e}[/red]")
 
