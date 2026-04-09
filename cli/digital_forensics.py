@@ -31,37 +31,21 @@ class DeviceForensics:
         self.extractions = []
 
     def _check_root(self) -> bool:
-        """Check if device is rooted."""
+        """Check if device is rooted - using same method as scanner.py."""
         try:
             console.print("[cyan]🔍 Checking device root status...[/cyan]")
 
-            # Method 1: Try su command
-            stdout, stderr, code = self.adb._run_cmd(["shell", "su", "-c", "id"])
+            # Use the SAME method that works in scanner.py
+            stdout, _, code = self.adb._run_cmd(["shell", "su", "-c", "echo", "rooted"])
 
-            # Check if uid=0 in output (root user)
-            if code == 0 and stdout and "uid=0" in stdout:
+            if code == 0 and "rooted" in stdout:
                 console.print("[green]✓ Device is ROOTED[/green]")
                 return True
-
-            # Method 2: Check for /system/xbin/su file
-            stdout2, stderr2, code2 = self.adb._run_cmd(["shell", "test", "-f", "/system/xbin/su", "&&", "echo", "yes"])
-
-            if code2 == 0 and "yes" in stdout2:
-                console.print("[green]✓ Device is ROOTED[/green]")
-                return True
-
-            # Method 3: Check id output directly (some devices show uid=0 without su)
-            stdout3, stderr3, code3 = self.adb._run_cmd(["shell", "id"])
-
-            if code3 == 0 and "uid=0" in stdout3:
-                console.print("[green]✓ Device is ROOTED[/green]")
-                return True
-
-            # If none worked, not rooted
-            console.print("[yellow]⚠ Device is NOT rooted (limited access)[/yellow]")
-            return False
+            else:
+                console.print("[yellow]⚠ Device is NOT rooted (limited access)[/yellow]")
+                return False
         except Exception as e:
-            console.print(f"[yellow]⚠ Root detection error: {e}[/yellow]")
+            console.print(f"[yellow]⚠ Root detection failed: {e}[/yellow]")
             return False
 
     def create_case(self, case_name: str = None) -> bool:
