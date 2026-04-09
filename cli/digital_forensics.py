@@ -304,27 +304,28 @@ class DeviceForensics:
             prefs_path = f"/data/data/{package}/shared_prefs/"
 
             # Check if shared_prefs folder exists
-            stdout, stderr, code = self.adb._run_cmd(["shell", "su", "-c", f"ls {prefs_path}"])
+            stdout, stderr, code = self.adb._run_cmd(["shell", "su", "-c", f"ls -la {prefs_path}"])
             if code != 0:
                 console.print(f"[yellow]⚠ No shared_prefs folder found for {appname}[/yellow]")
                 return False
 
-            # List ALL files in shared_prefs folder
-            files = [f.strip() for f in stdout.strip().split('\n') if f.strip()]
+            # Parse file list
+            files = [f.strip() for f in stdout.strip().split('\n') if f.strip() and not f.startswith('total')]
+            pref_files = [f.split()[-1] for f in files if f.split()[-1] and not f.split()[-1].startswith('.')]
 
-            if not files:
-                console.print(f"[yellow]⚠ No files found[/yellow]")
+            if not pref_files:
+                console.print(f"[yellow]⚠ No preference files found[/yellow]")
                 return False
 
-            # Create output directory: Device_database/[package]/shared_prefs/
+            # Create output directory
             output_dir = self._get_output_path(f"Device_database/{package}/shared_prefs")
             Path(output_dir).mkdir(parents=True, exist_ok=True)
 
-            console.print(f"[dim]Found {len(files)} files, copying...[/dim]\n")
+            console.print(f"[dim]Found {len(pref_files)} files, copying...[/dim]\n")
 
-            # Copy ALL files from shared_prefs folder
+            # Copy files
             extracted_count = 0
-            for file in files:
+            for file in pref_files:
                 src = f"{prefs_path}{file}"
                 dst = str(Path(output_dir) / file)
 
@@ -332,6 +333,8 @@ class DeviceForensics:
                 if code == 0:
                     extracted_count += 1
                     console.print(f"[dim]  ✓ {file}[/dim]")
+                else:
+                    console.print(f"[dim]  ✗ {file}[/dim]")
 
             if extracted_count > 0:
                 console.print(f"\n[green]✓ Extracted {extracted_count} files[/green]")
@@ -358,24 +361,9 @@ class DeviceForensics:
             files_path = f"/data/data/{package}/files/"
 
             # Check if files folder exists
-            stdout, stderr, code = self.adb._run_cmd(["shell", "su", "-c", f"ls -R {files_path}"])
+            stdout, stderr, code = self.adb._run_cmd(["shell", "su", "-c", f"find {files_path} -type f 2>/dev/null"])
             if code != 0:
                 console.print(f"[yellow]⚠ No files folder found for {appname}[/yellow]")
-                return False
-
-            # Create output directory: Device_database/[package]/files/
-            output_dir = self._get_output_path(f"Device_database/{package}/files")
-            Path(output_dir).mkdir(parents=True, exist_ok=True)
-
-            console.print(f"[dim]Scanning and copying files...[/dim]\n")
-
-            # Use adb pull with wildcard to get all files
-            src_pattern = f"{files_path}*"
-
-            # Alternative: traverse directory recursively
-            stdout, stderr, code = self.adb._run_cmd(["shell", "su", "-c", f"find {files_path} -type f"])
-            if code != 0:
-                console.print(f"[yellow]⚠ No files found[/yellow]")
                 return False
 
             file_list = [f.strip() for f in stdout.strip().split('\n') if f.strip()]
@@ -384,13 +372,19 @@ class DeviceForensics:
                 console.print(f"[yellow]⚠ No files found[/yellow]")
                 return False
 
+            # Create output directory
+            output_dir = self._get_output_path(f"Device_database/{package}/files")
+            Path(output_dir).mkdir(parents=True, exist_ok=True)
+
+            console.print(f"[dim]Found {len(file_list)} files, copying...[/dim]\n")
+
             extracted_count = 0
             for file_path in file_list:
                 # Get relative path
                 rel_path = file_path.replace(files_path, "")
                 dst = str(Path(output_dir) / rel_path)
 
-                # Create subdirectories if needed
+                # Create subdirectories
                 Path(dst).parent.mkdir(parents=True, exist_ok=True)
 
                 stdout, stderr, code = self.adb._run_cmd(["pull", file_path, dst])
