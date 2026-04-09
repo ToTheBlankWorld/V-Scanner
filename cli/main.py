@@ -26,6 +26,7 @@ from ui_styles import (
 )
 from dependency_checker import check_all_dependencies
 from auto_setup import check_and_setup
+from digital_forensics import show_forensics_menu
 
 console = Console()
 
@@ -1276,7 +1277,7 @@ def main_menu():
     while True:
         print_main_menu()
 
-        choice = console.input("[bold cyan]Select option (1-11): [/bold cyan]")
+        choice = console.input("[bold cyan]Select option (1-12): [/bold cyan]")
 
         if choice == "1":
             return "list"
@@ -1311,11 +1312,14 @@ def main_menu():
             return "screen_share"
 
         elif choice == "11":
+            return "forensics"
+
+        elif choice == "12":
             print_footer()
             sys.exit(0)
 
         else:
-            console.print("[red]❌ Invalid choice. Please select 1-11.[/red]")
+            console.print("[red]❌ Invalid choice. Please select 1-12.[/red]")
             console.input("[dim]Press Enter to continue...[/dim]")
 
 
@@ -1549,7 +1553,19 @@ def main():
                 device_info_shown = False
             screen_share(current_device)
             console.input("[dim]Press Enter to continue...[/dim]")
-        
+
+        elif menu_choice == "forensics":
+            if not current_device:
+                console.print("[yellow]⚠️ No device selected. Please select a device for forensics.[/yellow]")
+                current_device = select_device()
+                if not current_device:
+                    continue
+                device_info_shown = False
+
+            # Create ADB interface for forensics
+            adb_interface = ADBInterface(current_device)
+            show_forensics_menu(adb_interface)
+
         elif menu_choice == "change_device":
             devices = get_available_devices()
             if not devices:

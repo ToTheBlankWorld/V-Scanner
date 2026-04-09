@@ -79,24 +79,25 @@ def print_main_menu(device_info: str = None):
         ("8", "🔄", "Change Device", "Switch to different device"),
         ("9", "⚙️ ", "Reconfigure ADB", "Update ADB settings"),
         ("10", "📸", "Screen Share", "View connected phone screen"),
-        ("11", "❌", "Exit", "Close application"),
+        ("11", "🔍", "Digital Forensics", "Forensic evidence extraction"),
+        ("12", "❌", "Exit", "Close application"),
     ]
-    
+
     console.print("\n[bold cyan]╔════════════════════════════════════════╗[/bold cyan]")
     console.print("[bold cyan]║[/bold cyan]         🔒 MAIN MENU - V SCANNER              [bold cyan]║[/bold cyan]")
     console.print("[bold cyan]╚════════════════════════════════════════╝[/bold cyan]\n")
-    
+
     for num, icon, title, desc in menu_items:
-        if num == "11":
+        if num == "12":
             console.print()
-        
-        if num == "11":
+
+        if num == "12":
             color = "red"
-        elif num in ["7", "8", "9", "10"]:
+        elif num in ["7", "8", "9", "10", "11"]:
             color = "yellow"
         else:
             color = "cyan"
-        
+
         console.print(f"  [bold {color}]{num:<2}[/bold {color}]  {icon}  [bold white]{title:<25}[/bold white]  {desc}")
     
     console.print(f"\n  [dim]─────────────────────────────────────[/dim]")
