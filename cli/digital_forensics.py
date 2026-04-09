@@ -36,18 +36,46 @@ class DeviceForensics:
         self._show_root_status()
         self.extractions = []
 
-    def _find_database(self, possible_paths: List[str]) -> Optional[str]:
-        """Try multiple database paths and return the first one that exists."""
-        for path in possible_paths:
-            # Try pulling the file - simpler than checking existence first
-            # This works even if file check has permission issues
-            stdout, stderr, code = self.adb._run_cmd(["pull", path, "/dev/null"])
-            if code == 0:
-                console.print(f"[dim]Found database at: {path}[/dim]")
-                return path
-            else:
-                console.print(f"[dim]Tried: {path} (not found)[/dim]")
-        return None
+    def _extract_all_dbs_from_dir(self, directory: str, output_prefix: str) -> bool:
+        """Extract ALL .db files from a directory."""
+        try:
+            # List all files in directory
+            stdout, stderr, code = self.adb._run_cmd(["shell", "su", "-c", f"ls {directory}"])
+
+            if code != 0:
+                console.print(f"[dim]Directory not accessible: {directory}[/dim]")
+                return False
+
+            # Parse filenames and filter for .db files
+            files = stdout.strip().split('\n')
+            db_files = [f for f in files if f.endswith('.db') or f.endswith('.db-journal')]
+
+            if not db_files:
+                console.print(f"[dim]No .db files found in {directory}[/dim]")
+                return False
+
+            console.print(f"[dim]Found {len(db_files)} database files[/dim]")
+
+            # Create a subdirectory for these files
+            output_dir = self._get_output_path(output_prefix)
+            Path(output_dir).mkdir(parents=True, exist_ok=True)
+
+            # Copy each .db file
+            extracted_count = 0
+            for db_file in db_files:
+                src_path = f"{directory}{db_file}"
+                dst_path = str(Path(output_dir) / db_file)
+
+                stdout, stderr, code = self.adb._run_cmd(["pull", src_path, dst_path])
+                if code == 0:
+                    extracted_count += 1
+                    console.print(f"[dim]  ✓ {db_file}[/dim]")
+
+            return extracted_count > 0
+        except Exception as e:
+            console.print(f"[red]Error: {str(e)[:100]}[/red]")
+            return False
+
 
     def _check_root_safe(self) -> bool:
         """Try to detect root, but default to True if detection fails (for Apatch compatibility)."""
@@ -118,33 +146,20 @@ class DeviceForensics:
             console.print("[cyan]☎️  Extracting call logs...[/cyan]")
 
             if self.is_rooted:
-                # Try multiple possible paths (varies by device/Android version)
-                possible_paths = [
-                    "/data/data/com.android.providers.contacts/databases/call_log.db",
-                    "/data/data/com.android.phone/databases/calls.db",
-                    "/data/data/com.android.dialer/databases/calls.db"
-                ]
-
-                call_db = self._find_database(possible_paths)
-                if not call_db:
-                    console.print(f"[yellow]⚠ Could not find call logs database on this device[/yellow]")
-                    return False
-
-                output_file = self._get_output_path("call_logs.db")
-                stdout, stderr, code = self.adb._run_cmd(["pull", call_db, str(output_file)])
-
-                if code == 0 and Path(output_file).exists():
-                    calls = self._parse_call_logs(str(output_file))
-                    console.print(f"[green]✓ Extracted {len(calls)} call records[/green]")
+                # Extract all .db files from contacts databases directory
+                if self._extract_all_dbs_from_dir(
+                    "/data/data/com.android.providers.contacts/databases/",
+                    "call_logs"
+                ):
+                    console.print(f"[green]✓ Call logs extracted successfully[/green]")
                     self.extractions.append({
                         "type": "call_logs",
-                        "count": len(calls),
                         "status": "success",
-                        "file": str(output_file)
+                        "location": "/data/data/com.android.providers.contacts/databases/"
                     })
                     return True
                 else:
-                    console.print(f"[yellow]⚠ Could not access call logs database[/yellow]")
+                    console.print(f"[yellow]⚠ Could not extract call logs[/yellow]")
                     return False
             else:
                 # Non-rooted: use dumpsys
@@ -174,30 +189,21 @@ class DeviceForensics:
             console.print("[cyan]📖 Extracting contacts...[/cyan]")
 
             if self.is_rooted:
-                # Try multiple possible paths (varies by device/Android version)
-                possible_paths = [
-                    "/data/data/com.android.contacts/databases/contacts2.db",
-                    "/data/data/com.android.providers.contacts/contacts.db"
-                ]
-
-                contacts_db = self._find_database(possible_paths)
-                if not contacts_db:
-                    console.print(f"[yellow]⚠ Could not find contacts database on this device[/yellow]")
-                    return False
-
-                output_file = self._get_output_path("contacts.db")
-                stdout, stderr, code = self.adb._run_cmd(["pull", contacts_db, str(output_file)])
-
-                if code == 0 and Path(output_file).exists():
-                    contacts = self._parse_contacts(str(output_file))
-                    console.print(f"[green]✓ Extracted {len(contacts)} contacts[/green]")
+                # Extract all .db files from contacts directory
+                if self._extract_all_dbs_from_dir(
+                    "/data/data/com.android.contacts/databases/",
+                    "contacts"
+                ):
+                    console.print(f"[green]✓ Contacts extracted successfully[/green]")
                     self.extractions.append({
                         "type": "contacts",
-                        "count": len(contacts),
                         "status": "success",
-                        "file": str(output_file)
+                        "location": "/data/data/com.android.contacts/databases/"
                     })
                     return True
+                else:
+                    console.print(f"[yellow]⚠ Could not extract contacts[/yellow]")
+                    return False
             else:
                 # Non-rooted: use content query (may be limited)
                 console.print("[dim]Running non-rooted extraction...[/dim]")
@@ -224,31 +230,21 @@ class DeviceForensics:
             console.print("[cyan]💬 Extracting messages...[/cyan]")
 
             if self.is_rooted:
-                # Try multiple possible paths (varies by device/Android version)
-                possible_paths = [
-                    "/data/data/com.android.providers.telephony/databases/mmssms.db",
-                    "/data/data/com.android.mms/databases/mmssms.db",
-                    "/data/data/com.android.sms/databases/sms.db"
-                ]
-
-                messages_db = self._find_database(possible_paths)
-                if not messages_db:
-                    console.print(f"[yellow]⚠ Could not find messages database on this device[/yellow]")
-                    return False
-
-                output_file = self._get_output_path("messages.db")
-                stdout, stderr, code = self.adb._run_cmd(["pull", messages_db, str(output_file)])
-
-                if code == 0 and Path(output_file).exists():
-                    messages = self._parse_messages(str(output_file))
-                    console.print(f"[green]✓ Extracted {len(messages)} messages[/green]")
+                # Extract all .db files from telephony database directory
+                if self._extract_all_dbs_from_dir(
+                    "/data/data/com.android.providers.telephony/databases/",
+                    "messages"
+                ):
+                    console.print(f"[green]✓ Messages extracted successfully[/green]")
                     self.extractions.append({
                         "type": "messages",
-                        "count": len(messages),
                         "status": "success",
-                        "file": str(output_file)
+                        "location": "/data/data/com.android.providers.telephony/databases/"
                     })
                     return True
+                else:
+                    console.print(f"[yellow]⚠ Could not extract messages[/yellow]")
+                    return False
             else:
                 # Non-rooted: show limitation
                 console.print("[dim]Running non-rooted extraction...[/dim]")
@@ -275,32 +271,25 @@ class DeviceForensics:
             console.print("[cyan]🌐 Extracting browser history...[/cyan]")
 
             if self.is_rooted:
-                # Try multiple possible browser paths (varies by device/Android version)
-                possible_paths = [
-                    "/data/data/com.android.chrome/app_chrome/Default/History",
-                    "/data/data/com.chrome/Default/History",
-                    "/data/data/com.google.android.webview/History",
-                    "/data/data/com.android.browser/databases/browser.db"
+                # Try multiple browser database directories
+                browser_dirs = [
+                    "/data/data/com.android.chrome/app_chrome/Default/",
+                    "/data/data/com.google.android.webview/",
+                    "/data/data/com.android.browser/databases/"
                 ]
 
-                chrome_db = self._find_database(possible_paths)
-                if not chrome_db:
-                    console.print(f"[yellow]⚠ Could not find browser history on this device[/yellow]")
-                    return False
+                for browser_dir in browser_dirs:
+                    if self._extract_all_dbs_from_dir(browser_dir, "browser_history"):
+                        console.print(f"[green]✓ Browser history extracted successfully[/green]")
+                        self.extractions.append({
+                            "type": "browser_history",
+                            "status": "success",
+                            "location": browser_dir
+                        })
+                        return True
 
-                output_file = self._get_output_path("browser_history.db")
-                stdout, stderr, code = self.adb._run_cmd(["pull", chrome_db, str(output_file)])
-
-                if code == 0 and Path(output_file).exists():
-                    history = self._parse_browser_history(str(output_file))
-                    console.print(f"[green]✓ Extracted {len(history)} history entries[/green]")
-                    self.extractions.append({
-                        "type": "browser_history",
-                        "count": len(history),
-                        "status": "success",
-                        "file": str(output_file)
-                    })
-                    return True
+                console.print(f"[yellow]⚠ Could not extract browser history[/yellow]")
+                return False
             else:
                 # Non-rooted: browser data inaccessible
                 console.print("[dim]Running non-rooted extraction...[/dim]")
