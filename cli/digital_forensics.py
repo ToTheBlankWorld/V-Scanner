@@ -27,50 +27,21 @@ class DeviceForensics:
         self.case_dir = Path(__file__).parent / "forensics_cases"
         self.case_dir.mkdir(parents=True, exist_ok=True)
         self.current_case = None
-        self.is_rooted = self._check_root()
+
+        # Get device info which already has working root detection
+        device_info = self.adb.get_comprehensive_device_info()
+        self.is_rooted = device_info.get("is_rooted") == "Yes ⚠️"
+
+        self._show_root_status()
         self.extractions = []
 
-    def _check_root(self) -> bool:
-        """Check if device is rooted - with full debug output."""
-        try:
-            console.print("[cyan]🔍 Checking device root status...[/cyan]")
-
-            # Test multiple methods and show all results
-
-            # Method 1: ls /data/data/
-            console.print("[dim]  Testing: ls /data/data/[/dim]")
-            stdout1, stderr1, code1 = self.adb._run_cmd(["shell", "ls", "/data/data/"])
-            console.print(f"[dim]    Code: {code1}, Output: {len(stdout1)} bytes[/dim]")
-
-            if code1 == 0 and stdout1:
-                console.print("[green]✓ Device is ROOTED (ls /data/data/ works)[/green]")
-                return True
-
-            # Method 2: su -c echo rooted
-            console.print("[dim]  Testing: su -c echo rooted[/dim]")
-            stdout2, stderr2, code2 = self.adb._run_cmd(["shell", "su", "-c", "echo", "rooted"])
-            console.print(f"[dim]    Code: {code2}, Output: {stdout2.strip()}, Error: {stderr2.strip()[:50]}[/dim]")
-
-            if code2 == 0 and "rooted" in stdout2:
-                console.print("[green]✓ Device is ROOTED (su -c echo works)[/green]")
-                return True
-
-            # Method 3: su -c id
-            console.print("[dim]  Testing: su -c id[/dim]")
-            stdout3, stderr3, code3 = self.adb._run_cmd(["shell", "su", "-c", "id"])
-            console.print(f"[dim]    Code: {code3}, Output: {stdout3.strip()[:50]}, Error: {stderr3.strip()[:50]}[/dim]")
-
-            if code3 == 0 and "uid=0" in stdout3:
-                console.print("[green]✓ Device is ROOTED (uid=0)[/green]")
-                return True
-
-            # All failed
-            console.print("[yellow]⚠ Device is NOT rooted (all tests failed)[/yellow]")
-            return False
-
-        except Exception as e:
-            console.print(f"[red]✗ Exception during root check: {e}[/red]")
-            return False
+    def _show_root_status(self):
+        """Show root status."""
+        console.print("[cyan]🔍 Checking device root status...[/cyan]")
+        if self.is_rooted:
+            console.print("[green]✓ Device is ROOTED[/green]")
+        else:
+            console.print("[yellow]⚠ Device is NOT rooted (limited access)[/yellow]")
 
     def create_case(self, case_name: str = None) -> bool:
         """Create new forensics case."""
