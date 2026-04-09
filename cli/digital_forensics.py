@@ -61,36 +61,63 @@ class DeviceForensics:
                 console.print("[yellow]No apps found[/yellow]")
                 return False
 
-            # Step 2: Show list with app name and package name
-            console.print(f"\n[dim]Found {len(apps)} {app_category} apps:[/dim]\n")
-
-            for idx, (appname, package) in enumerate(apps, 1):
-                console.print(f"  [{idx}] {appname}")
-                console.print(f"      └─ {package}\n")
-
-            # Step 3: User selects app
-            selection = console.input("[bold cyan]Select app number (or 0 to cancel): [/bold cyan]").strip()
-
-            try:
-                choice = int(selection)
-                if choice == 0:
-                    return False
-                if choice < 1 or choice > len(apps):
-                    console.print("[red]Invalid selection[/red]")
-                    return False
-            except ValueError:
-                console.print("[red]Invalid input[/red]")
-                return False
-
-            appname, package = apps[choice - 1]
-
-            # Step 4: Extract app databases
-            console.print(f"\n[cyan]Extracting databases for: {appname}[/cyan]")
-            return self._extract_single_app_databases(package, appname)
+            # Step 2: Show paginated list (50 apps per page)
+            return self._select_app_from_list(apps)
 
         except Exception as e:
             console.print(f"[red]✗ Error: {str(e)[:100]}[/red]")
             return False
+
+    def _select_app_from_list(self, apps: List[tuple]) -> bool:
+        """Show paginated list and let user select an app."""
+        page = 0
+        apps_per_page = 50
+
+        while True:
+            start_idx = page * apps_per_page
+            end_idx = start_idx + apps_per_page
+            current_page_apps = apps[start_idx:end_idx]
+
+            if not current_page_apps:
+                console.print("[yellow]No more apps[/yellow]")
+                return False
+
+            console.print(f"\n[dim]Showing {start_idx + 1}-{min(end_idx, len(apps))} of {len(apps)} apps:[/dim]\n")
+
+            # Display apps for this page
+            for idx, (appname, package) in enumerate(current_page_apps, 1):
+                console.print(f"  [{idx}] {appname}")
+                console.print(f"      └─ {package}\n")
+
+            # Show pagination options
+            if end_idx < len(apps):
+                console.print(f"  [51] \\ Next 50 apps          - Show next page\n")
+
+            # Get user input
+            selection = console.input("[bold cyan]Select app (1-50) or 51 for next page (0 to cancel): [/bold cyan]").strip()
+
+            try:
+                choice = int(selection)
+
+                if choice == 0:
+                    return False
+
+                if choice == 51 and end_idx < len(apps):
+                    page += 1
+                    continue
+
+                if choice < 1 or choice > len(current_page_apps):
+                    console.print("[red]Invalid selection[/red]")
+                    continue
+
+                # User selected an app
+                appname, package = current_page_apps[choice - 1]
+                console.print(f"\n[cyan]Extracting databases for: {appname}[/cyan]")
+                return self._extract_single_app_databases(package, appname)
+
+            except ValueError:
+                console.print("[red]Invalid input[/red]")
+                continue
 
     def _get_system_apps(self) -> List[tuple]:
         """Get list of system apps (app name, package name)."""
@@ -159,7 +186,7 @@ class DeviceForensics:
             return []
 
     def _extract_single_app_databases(self, package: str, appname: str) -> bool:
-        """Extract databases folder for a single app."""
+        """Extract ALL files from app's databases folder."""
         try:
             db_path = f"/data/data/{package}/databases/"
 
@@ -169,32 +196,32 @@ class DeviceForensics:
                 console.print(f"[yellow]⚠ No databases folder found for {appname}[/yellow]")
                 return False
 
-            # List database files
+            # List ALL files in databases folder
             files = [f.strip() for f in stdout.strip().split('\n') if f.strip()]
-            db_files = [f for f in files if f.endswith('.db') or f.endswith('.db-journal') or f.endswith('.db-shm') or f.endswith('.db-wal')]
 
-            if not db_files:
-                console.print(f"[yellow]⚠ No database files found[/yellow]")
+            if not files:
+                console.print(f"[yellow]⚠ No files found[/yellow]")
                 return False
 
-            # Create output directory: AppName_databases/
-            app_safe_name = appname.replace(' ', '_').replace(':', '')
-            output_dir = self._get_output_path(f"{app_safe_name}_databases")
+            # Create output directory: Device_database/[package]/databases/
+            output_dir = self._get_output_path(f"Device_database/{package}/databases")
             Path(output_dir).mkdir(parents=True, exist_ok=True)
 
-            # Extract all database files
+            console.print(f"[dim]Found {len(files)} files, copying...[/dim]\n")
+
+            # Copy ALL files from databases folder
             extracted_count = 0
-            for db_file in db_files:
-                src = f"{db_path}{db_file}"
-                dst = str(Path(output_dir) / db_file)
+            for file in files:
+                src = f"{db_path}{file}"
+                dst = str(Path(output_dir) / file)
 
                 stdout, stderr, code = self.adb._run_cmd(["pull", src, dst])
                 if code == 0:
                     extracted_count += 1
-                    console.print(f"[dim]  ✓ {db_file}[/dim]")
+                    console.print(f"[dim]  ✓ {file}[/dim]")
 
             if extracted_count > 0:
-                console.print(f"\n[green]✓ Extracted {extracted_count} database files[/green]")
+                console.print(f"\n[green]✓ Extracted {extracted_count} files[/green]")
                 self.extractions.append({
                     "type": "app_databases",
                     "app_name": appname,
