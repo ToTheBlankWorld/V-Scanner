@@ -240,13 +240,13 @@ class DeviceForensics:
         try:
             db_path = f"/data/data/{package}/databases/"
 
-            # Use find to get ALL files with full paths
-            stdout, stderr, code = self.adb._run_cmd(["shell", "su", "-c", f"find {db_path} -type f 2>/dev/null | head -100"])
+            # Use simple ls to list files - more reliable than find
+            stdout, stderr, code = self.adb._run_cmd(["shell", "su", "-c", f"ls -1 {db_path} 2>/dev/null"])
             if code != 0 or not stdout.strip():
                 console.print(f"[yellow]⚠ No databases folder found for {appname}[/yellow]")
                 return False
 
-            # Parse list - find returns full paths like /data/data/com.whatsapp/databases/wa.db
+            # Parse list - ls -1 returns just filenames, one per line
             file_list = [f.strip() for f in stdout.strip().split('\n') if f.strip()]
 
             if not file_list:
@@ -259,20 +259,16 @@ class DeviceForensics:
 
             console.print(f"[dim]Found {len(file_list)} files, copying...[/dim]\n")
 
-            # Debug: show first file being extracted
-            first_file = file_list[0]
-            console.print(f"[dim]Sample path: {first_file}[/dim]\n")
-
             # Copy ALL files
             extracted_count = 0
             failed_files = []
 
-            for full_path in file_list:
-                # Extract just the filename from full path
-                filename = full_path.split('/')[-1]
+            for filename in file_list:
+                # Build full path
+                file_path = f"{db_path}{filename}"
                 dst = str(Path(output_dir) / filename)
 
-                stdout, stderr, code = self.adb._run_cmd(["pull", full_path, dst])
+                stdout, stderr, code = self.adb._run_cmd(["pull", file_path, dst])
                 if code == 0:
                     extracted_count += 1
                     console.print(f"[dim]  ✓ {filename}[/dim]")
@@ -292,8 +288,8 @@ class DeviceForensics:
                 return True
             else:
                 if failed_files:
-                    console.print(f"[red]✗ Failed to extract any files[/red]")
-                    console.print(f"[dim]First error: {failed_files[0][0]} - {failed_files[0][1]}[/dim]")
+                    console.print(f"[red]✗ Failed to extract {len(failed_files)} files[/red]")
+                    console.print(f"[dim]First error: {failed_files[0][1]}[/dim]")
                 return False
 
         except Exception as e:
@@ -305,13 +301,13 @@ class DeviceForensics:
         try:
             prefs_path = f"/data/data/{package}/shared_prefs/"
 
-            # Use find to get all files with full paths
-            stdout, stderr, code = self.adb._run_cmd(["shell", "su", "-c", f"find {prefs_path} -type f 2>/dev/null | head -100"])
+            # Use simple ls to list files
+            stdout, stderr, code = self.adb._run_cmd(["shell", "su", "-c", f"ls -1 {prefs_path} 2>/dev/null"])
             if code != 0 or not stdout.strip():
                 console.print(f"[yellow]⚠ No shared_prefs folder found for {appname}[/yellow]")
                 return False
 
-            # Parse list - find returns full paths
+            # Parse list - ls -1 returns just filenames
             file_list = [f.strip() for f in stdout.strip().split('\n') if f.strip()]
 
             if not file_list:
@@ -327,12 +323,12 @@ class DeviceForensics:
             # Copy files
             extracted_count = 0
 
-            for full_path in file_list:
-                # Extract filename from full path
-                filename = full_path.split('/')[-1]
+            for filename in file_list:
+                # Build full path
+                file_path = f"{prefs_path}{filename}"
                 dst = str(Path(output_dir) / filename)
 
-                stdout, stderr, code = self.adb._run_cmd(["pull", full_path, dst])
+                stdout, stderr, code = self.adb._run_cmd(["pull", file_path, dst])
                 if code == 0:
                     extracted_count += 1
                     console.print(f"[dim]  ✓ {filename}[/dim]")
