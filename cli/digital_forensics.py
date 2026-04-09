@@ -236,7 +236,7 @@ class DeviceForensics:
             return []
 
     def _extract_single_app_databases(self, package: str, appname: str) -> bool:
-        """Extract ALL files from app's databases folder using cat instead of pull."""
+        """Extract ALL files from app's databases folder using cat."""
         try:
             db_path = f"/data/data/{package}/databases/"
 
@@ -246,7 +246,7 @@ class DeviceForensics:
                 console.print(f"[yellow]⚠ No databases folder found for {appname}[/yellow]")
                 return False
 
-            # Parse list - ls -1 returns just filenames, one per line
+            # Parse list
             file_list = [f.strip() for f in stdout.strip().split('\n') if f.strip()]
 
             if not file_list:
@@ -259,31 +259,38 @@ class DeviceForensics:
 
             console.print(f"[dim]Found {len(file_list)} files, copying...[/dim]\n")
 
-            # Copy ALL files using cat (more reliable for special chars)
+            # Try first file to debug
+            test_file = file_list[0]
+            test_path = f"{db_path}{test_file}"
+
+            console.print(f"[dim]Testing: cat '{test_path}'[/dim]")
+            stdout, stderr, code = self.adb._run_cmd(["shell", "su", "-c", f"cat '{test_path}'"])
+            console.print(f"[dim]Result - code: {code}, stderr: {stderr[:50] if stderr else 'none'}, stdout len: {len(stdout) if stdout else 0}[/dim]\n")
+
+            # Copy ALL files
             extracted_count = 0
-            failed_files = []
 
             for filename in file_list:
                 file_path = f"{db_path}{filename}"
                 dst = str(Path(output_dir) / filename)
 
-                try:
-                    # Use cat to read file through adb shell and save locally
-                    stdout, stderr, code = self.adb._run_cmd(
-                        ["shell", "su", "-c", f"cat '{file_path}'"],
-                        return_output=True
-                    )
+                # Use cat to read file
+                stdout, stderr, code = self.adb._run_cmd(["shell", "su", "-c", f"cat '{file_path}'"])
 
-                    if code == 0 and stdout:
-                        # Write the file content
+                if code == 0 and stdout:
+                    try:
+                        # Try to write as binary
                         with open(dst, 'wb') as f:
-                            f.write(stdout.encode('latin-1') if isinstance(stdout, str) else stdout)
+                            if isinstance(stdout, bytes):
+                                f.write(stdout)
+                            else:
+                                f.write(stdout.encode('utf-8', errors='replace'))
                         extracted_count += 1
                         console.print(f"[dim]  ✓ {filename}[/dim]")
-                    else:
-                        failed_files.append((filename, "cat failed"))
-                except Exception as e:
-                    failed_files.append((filename, str(e)[:30]))
+                    except Exception as write_err:
+                        console.print(f"[dim]  ✗ {filename} - write error[/dim]")
+                else:
+                    console.print(f"[dim]  ✗ {filename} - cat failed[/dim]")
 
             if extracted_count > 0:
                 console.print(f"\n[green]✓ Extracted {extracted_count} files[/green]")
@@ -297,8 +304,7 @@ class DeviceForensics:
                 })
                 return True
             else:
-                if failed_files:
-                    console.print(f"[red]✗ Failed to extract {len(failed_files)} files[/red]")
+                console.print(f"[red]✗ Failed to extract any files[/red]")
                 return False
 
         except Exception as e:
