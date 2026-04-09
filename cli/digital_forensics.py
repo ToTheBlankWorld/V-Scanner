@@ -259,8 +259,13 @@ class DeviceForensics:
 
             console.print(f"[dim]Found {len(file_list)} files, copying...[/dim]\n")
 
+            # Debug: show first file being extracted
+            first_file = file_list[0]
+            console.print(f"[dim]Sample path: {first_file}[/dim]\n")
+
             # Copy ALL files
             extracted_count = 0
+            failed_files = []
 
             for full_path in file_list:
                 # Extract just the filename from full path
@@ -271,6 +276,8 @@ class DeviceForensics:
                 if code == 0:
                     extracted_count += 1
                     console.print(f"[dim]  ✓ {filename}[/dim]")
+                else:
+                    failed_files.append((filename, stderr[:50] if stderr else "unknown"))
 
             if extracted_count > 0:
                 console.print(f"\n[green]✓ Extracted {extracted_count} files[/green]")
@@ -284,7 +291,9 @@ class DeviceForensics:
                 })
                 return True
             else:
-                console.print(f"[red]✗ Failed to extract any files[/red]")
+                if failed_files:
+                    console.print(f"[red]✗ Failed to extract any files[/red]")
+                    console.print(f"[dim]First error: {failed_files[0][0]} - {failed_files[0][1]}[/dim]")
                 return False
 
         except Exception as e:
