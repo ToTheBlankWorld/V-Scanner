@@ -152,13 +152,14 @@ class DeviceForensics:
 
         page = 0
         apps_per_page = 50
+        total_pages = (len(apps) + apps_per_page - 1) // apps_per_page
 
         while True:
             start_idx = page * apps_per_page
             end_idx = start_idx + apps_per_page
             current_page_apps = apps[start_idx:end_idx]
 
-            console.print(f"\n[dim]Showing {start_idx + 1}-{min(end_idx, len(apps))} of {len(apps)} apps:[/dim]\n")
+            console.print(f"\n[dim]Showing {start_idx + 1}-{min(end_idx, len(apps))} of {len(apps)} apps (page {page + 1}/{total_pages}):[/dim]\n")
 
             # Display apps for this page
             for idx, (appname, package) in enumerate(current_page_apps, 1):
@@ -167,12 +168,13 @@ class DeviceForensics:
 
             # Show options at bottom
             console.print("[dim]──────────────────────────────────[/dim]")
-            for i in range(1, len(current_page_apps) + 1):
-                pass  # Apps already listed above
 
-            if end_idx < len(apps):
-                console.print(f"  [51] \\ Next 50 apps        (showing page {page + 1} of {(len(apps) + 49) // 50})")
-            if page > 0:
+            has_next = (page + 1) < total_pages
+            has_prev = page > 0
+
+            if has_next:
+                console.print(f"  [51] \\ Next 50 apps")
+            if has_prev:
                 console.print(f"  [52] / Previous 50 apps")
 
             console.print(f"  [99] Enter package name manually")
@@ -183,12 +185,14 @@ class DeviceForensics:
 
             try:
                 choice = int(selection)
+                console.print(f"[dim]DEBUG: choice={choice}, page={page}, has_next={has_next}[/dim]")
 
                 if choice == 0:
                     return None
 
                 if choice == 51:
-                    if end_idx < len(apps):
+                    if has_next:
+                        console.print(f"[dim]Moving to page {page + 2} of {total_pages}...[/dim]")
                         page += 1
                         continue
                     else:
@@ -196,7 +200,8 @@ class DeviceForensics:
                         continue
 
                 if choice == 52:
-                    if page > 0:
+                    if has_prev:
+                        console.print(f"[dim]Moving to page {page} of {total_pages}...[/dim]")
                         page -= 1
                         continue
                     else:
@@ -213,7 +218,7 @@ class DeviceForensics:
                     continue
 
                 if choice < 1 or choice > len(current_page_apps):
-                    console.print("[red]Invalid selection[/red]")
+                    console.print(f"[red]Invalid selection (choose 1-{len(current_page_apps)})[/red]")
                     continue
 
                 # User selected an app
