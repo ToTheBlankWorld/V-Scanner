@@ -273,15 +273,12 @@ class DeviceForensics:
         return False
 
     def extract_system_logs(self) -> bool:
-        """Extract system logs (works without root)."""
+        """Extract system logs (logcat)."""
         try:
             console.print("[cyan]📋 Extracting system logs...[/cyan]")
 
-            # Clear old logs first, then get new ones
-            self.adb._run_cmd(["logcat", "-c"])
-
-            # Get recent logs (dumped logcat)
-            stdout, stderr, code = self.adb._run_cmd(["logcat", "-d"])
+            # logcat is a shell command, must use "shell" prefix
+            stdout, stderr, code = self.adb._run_cmd(["shell", "logcat", "-d"])
 
             if code == 0 and stdout:
                 output_file = self._get_output_path("system_logs.txt")
