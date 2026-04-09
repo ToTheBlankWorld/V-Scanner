@@ -145,7 +145,7 @@ class DeviceForensics:
             return False
 
     def _select_app_from_list_for_extraction(self, apps: List[tuple]) -> Optional[tuple]:
-        """Show paginated list and let user select an app. Returns (appname, package) or None."""
+        """Show paginated list and let user select an app or enter package manually."""
         page = 0
         apps_per_page = 50
 
@@ -154,8 +154,13 @@ class DeviceForensics:
             end_idx = start_idx + apps_per_page
             current_page_apps = apps[start_idx:end_idx]
 
-            if not current_page_apps:
+            if not current_page_apps and page > 0:
                 console.print("[yellow]No more apps[/yellow]")
+                page -= 1
+                continue
+
+            if not current_page_apps:
+                console.print("[yellow]No apps found[/yellow]")
                 return None
 
             console.print(f"\n[dim]Showing {start_idx + 1}-{min(end_idx, len(apps))} of {len(apps)} apps:[/dim]\n")
@@ -165,12 +170,21 @@ class DeviceForensics:
                 console.print(f"  [{idx}] {appname}")
                 console.print(f"      └─ {package}\n")
 
-            # Show pagination options
+            # Show options
+            options = []
             if end_idx < len(apps):
-                console.print(f"  [51] \\ Next 50 apps          - Show next page\n")
+                options.append("[51] \\ Next 50 apps")
+            if page > 0:
+                options.append("[52] / Previous 50 apps")
+            options.append("[99] Enter package name manually")
+            options.append("[0] Cancel")
+
+            for opt in options:
+                console.print(f"  {opt}")
+            console.print()
 
             # Get user input
-            selection = console.input("[bold cyan]Select app (1-50) or 51 for next page (0 to cancel): [/bold cyan]").strip()
+            selection = console.input("[bold cyan]Select app (1-50) or option above (0-99): [/bold cyan]").strip()
 
             try:
                 choice = int(selection)
@@ -180,6 +194,17 @@ class DeviceForensics:
 
                 if choice == 51 and end_idx < len(apps):
                     page += 1
+                    continue
+
+                if choice == 52 and page > 0:
+                    page -= 1
+                    continue
+
+                if choice == 99:
+                    # Manual package name entry
+                    pkg = console.input("[bold cyan]Enter package name (e.g., com.whatsapp): [/bold cyan]").strip()
+                    if pkg:
+                        return (pkg.split('.')[-1].title(), pkg)
                     continue
 
                 if choice < 1 or choice > len(current_page_apps):
