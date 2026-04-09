@@ -31,23 +31,45 @@ class DeviceForensics:
         self.extractions = []
 
     def _check_root(self) -> bool:
-        """Check if device is rooted by trying to access rooted resource."""
+        """Check if device is rooted - with full debug output."""
         try:
             console.print("[cyan]🔍 Checking device root status...[/cyan]")
 
-            # Simplest method: Try to access a file that only root can access
-            # /data/data/com.android.contacts/databases/contacts2.db requires root
-            stdout, stderr, code = self.adb._run_cmd(["shell", "ls", "/data/data/"])
+            # Test multiple methods and show all results
 
-            # If we can list /data/data/, device is rooted
-            if code == 0 and stdout:
-                console.print("[green]✓ Device is ROOTED[/green]")
+            # Method 1: ls /data/data/
+            console.print("[dim]  Testing: ls /data/data/[/dim]")
+            stdout1, stderr1, code1 = self.adb._run_cmd(["shell", "ls", "/data/data/"])
+            console.print(f"[dim]    Code: {code1}, Output: {len(stdout1)} bytes[/dim]")
+
+            if code1 == 0 and stdout1:
+                console.print("[green]✓ Device is ROOTED (ls /data/data/ works)[/green]")
                 return True
-            else:
-                console.print("[yellow]⚠ Device is NOT rooted (limited access)[/yellow]")
-                return False
+
+            # Method 2: su -c echo rooted
+            console.print("[dim]  Testing: su -c echo rooted[/dim]")
+            stdout2, stderr2, code2 = self.adb._run_cmd(["shell", "su", "-c", "echo", "rooted"])
+            console.print(f"[dim]    Code: {code2}, Output: {stdout2.strip()}, Error: {stderr2.strip()[:50]}[/dim]")
+
+            if code2 == 0 and "rooted" in stdout2:
+                console.print("[green]✓ Device is ROOTED (su -c echo works)[/green]")
+                return True
+
+            # Method 3: su -c id
+            console.print("[dim]  Testing: su -c id[/dim]")
+            stdout3, stderr3, code3 = self.adb._run_cmd(["shell", "su", "-c", "id"])
+            console.print(f"[dim]    Code: {code3}, Output: {stdout3.strip()[:50]}, Error: {stderr3.strip()[:50]}[/dim]")
+
+            if code3 == 0 and "uid=0" in stdout3:
+                console.print("[green]✓ Device is ROOTED (uid=0)[/green]")
+                return True
+
+            # All failed
+            console.print("[yellow]⚠ Device is NOT rooted (all tests failed)[/yellow]")
+            return False
+
         except Exception as e:
-            console.print(f"[yellow]⚠ Could not check root: {e}[/yellow]")
+            console.print(f"[red]✗ Exception during root check: {e}[/red]")
             return False
 
     def create_case(self, case_name: str = None) -> bool:
