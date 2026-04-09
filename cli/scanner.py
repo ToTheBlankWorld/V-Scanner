@@ -49,10 +49,12 @@ console = Console()
 
 class ADBInterface:
     """Interface for Android Debug Bridge (ADB) commands."""
-    
-    def __init__(self, device: str = None):
+
+    def __init__(self, device: str = None, adb_path: str = None):
         self.device = device
-        self.adb_cmd = ["adb"]
+        # Use provided adb_path or default to "adb" (assumes it's in PATH)
+        adb_cmd = adb_path if adb_path else "adb"
+        self.adb_cmd = [adb_cmd]
         if device:
             self.adb_cmd.extend(["-s", device])
     

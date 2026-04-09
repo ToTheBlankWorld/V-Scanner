@@ -1562,8 +1562,8 @@ def main():
                     continue
                 device_info_shown = False
 
-            # Create ADB interface for forensics
-            adb_interface = ADBInterface(current_device)
+            # Create ADB interface for forensics with the resolved adb_result path
+            adb_interface = ADBInterface(current_device, adb_path=adb_result)
             show_forensics_menu(adb_interface)
 
         elif menu_choice == "change_device":
