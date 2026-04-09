@@ -273,17 +273,26 @@ class DeviceForensics:
         return False
 
     def extract_system_logs(self) -> bool:
-        """Extract system logs (logcat)."""
+        """Extract system logs (logcat) - handle encoding issues."""
         try:
             console.print("[cyan]📋 Extracting system logs...[/cyan]")
 
             # logcat is a shell command, must use "shell" prefix
-            stdout, stderr, code = self.adb._run_cmd(["shell", "logcat", "-d"])
+            # Use timeout to prevent hanging on large outputs
+            stdout, stderr, code = self.adb._run_cmd(["shell", "logcat", "-d"], timeout=10)
 
             if code == 0 and stdout:
                 output_file = self._get_output_path("system_logs.txt")
-                with open(output_file, 'w') as f:
-                    f.write(stdout)
+
+                # Handle encoding issues - decode with errors='replace' or 'ignore'
+                try:
+                    # Try to write as UTF-8
+                    with open(output_file, 'w', encoding='utf-8') as f:
+                        f.write(stdout)
+                except UnicodeEncodeError:
+                    # If UTF-8 fails, write with error replacement
+                    with open(output_file, 'w', encoding='utf-8', errors='replace') as f:
+                        f.write(stdout)
 
                 log_count = stdout.count('\n')
                 console.print(f"[green]✓ Extracted {log_count} log entries[/green]")
@@ -297,7 +306,7 @@ class DeviceForensics:
             else:
                 console.print(f"[yellow]⚠ Could not extract logs: {stderr if stderr else 'No output'}[/yellow]")
         except Exception as e:
-            console.print(f"[red]✗ Error: {e}[/red]")
+            console.print(f"[red]✗ Error: {str(e)[:100]}[/red]")
 
         return False
 
