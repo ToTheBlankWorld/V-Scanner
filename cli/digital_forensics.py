@@ -36,69 +36,176 @@ class DeviceForensics:
         self._show_root_status()
         self.extractions = []
 
-    def extract_all_databases(self) -> bool:
-        """Extract ALL .db files from /data/data/ organized by package."""
+    def extract_app_databases(self) -> bool:
+        """Extract databases from user-selected app."""
         try:
-            console.print("[bold cyan]📦 Extracting all device databases...[/bold cyan]")
+            console.print("[bold cyan]📱 Extract App Databases[/bold cyan]\n")
 
-            # List all packages in /data/data/
-            stdout, stderr, code = self.adb._run_cmd(["shell", "su", "-c", "ls /data/data/"])
-            if code != 0:
-                console.print(f"[red]✗ Could not access /data/data/[/red]")
+            # Step 1: Choose System or 3rd Party
+            console.print("  [1] System Apps")
+            console.print("  [2] Third-Party Apps\n")
+
+            app_type = console.input("[bold cyan]Select app type (1-2): [/bold cyan]").strip()
+
+            if app_type == "1":
+                apps = self._get_system_apps()
+                app_category = "system"
+            elif app_type == "2":
+                apps = self._get_third_party_apps()
+                app_category = "3rd_party"
+            else:
+                console.print("[red]Invalid choice[/red]")
                 return False
 
-            packages = [p.strip() for p in stdout.strip().split('\n') if p.strip()]
-            console.print(f"[dim]Found {len(packages)} packages...[/dim]\n")
+            if not apps:
+                console.print("[yellow]No apps found[/yellow]")
+                return False
 
-            # Create Device_database master directory
-            device_db_dir = self._get_output_path("Device_database")
-            Path(device_db_dir).mkdir(parents=True, exist_ok=True)
+            # Step 2: Show list with app name and package name
+            console.print(f"\n[dim]Found {len(apps)} {app_category} apps:[/dim]\n")
 
-            total_files = 0
-            processed_packages = 0
+            for idx, (appname, package) in enumerate(apps, 1):
+                console.print(f"  [{idx}] {appname}")
+                console.print(f"      └─ {package}\n")
 
-            for package in packages:
-                db_path = f"/data/data/{package}/databases/"
+            # Step 3: User selects app
+            selection = console.input("[bold cyan]Select app number (or 0 to cancel): [/bold cyan]").strip()
 
-                # List files in package databases directory
-                stdout, stderr, code = self.adb._run_cmd(["shell", "su", "-c", f"ls {db_path}"])
-                if code != 0:
-                    continue
+            try:
+                choice = int(selection)
+                if choice == 0:
+                    return False
+                if choice < 1 or choice > len(apps):
+                    console.print("[red]Invalid selection[/red]")
+                    return False
+            except ValueError:
+                console.print("[red]Invalid input[/red]")
+                return False
 
-                files = [f.strip() for f in stdout.strip().split('\n') if f.strip()]
-                db_files = [f for f in files if f.endswith('.db') or f.endswith('.db-journal')]
+            appname, package = apps[choice - 1]
 
-                if not db_files:
-                    continue
+            # Step 4: Extract app databases
+            console.print(f"\n[cyan]Extracting databases for: {appname}[/cyan]")
+            return self._extract_single_app_databases(package, appname)
 
-                # Create package folder
-                package_dir = Path(device_db_dir) / package / "databases"
-                package_dir.mkdir(parents=True, exist_ok=True)
+        except Exception as e:
+            console.print(f"[red]✗ Error: {str(e)[:100]}[/red]")
+            return False
 
-                # Extract all .db files
-                for db_file in db_files:
-                    src = f"{db_path}{db_file}"
-                    dst = str(package_dir / db_file)
+    def _get_system_apps(self) -> List[tuple]:
+        """Get list of system apps (app name, package name)."""
+        system_packages = [
+            "com.android",
+            "android.",
+            "com.google",
+            "com.samsung",
+        ]
 
-                    stdout, stderr, code = self.adb._run_cmd(["pull", src, dst])
-                    if code == 0:
-                        total_files += 1
-                        console.print(f"[dim]  {package}/{db_file}[/dim]", highlight=False)
+        try:
+            stdout, stderr, code = self.adb._run_cmd(["shell", "pm", "list", "packages", "-s"])
+            if code != 0:
+                return []
 
-                processed_packages += 1
+            apps = []
+            for line in stdout.strip().split('\n'):
+                if line.startswith('package:'):
+                    package = line.replace('package:', '').strip()
 
-            if total_files > 0:
-                console.print(f"\n[green]✓ Extracted {total_files} database files from {processed_packages} packages[/green]")
+                    # Get app name
+                    stdout2, _, code2 = self.adb._run_cmd([
+                        "shell", "cmd", "package", "dump", package, "|", "grep", "label="
+                    ])
+
+                    if code2 == 0 and stdout2:
+                        # Extract label from "label=com.android.systemui=System UI"
+                        labels = [l.split('=')[-1] for l in stdout2.strip().split('\n') if 'label=' in l]
+                        appname = labels[0] if labels else package.split('.')[-1].title()
+                    else:
+                        appname = package.split('.')[-1].title()
+
+                    apps.append((appname, package))
+
+            return sorted(apps, key=lambda x: x[0])
+        except:
+            return []
+
+    def _get_third_party_apps(self) -> List[tuple]:
+        """Get list of third-party apps (app name, package name)."""
+        try:
+            stdout, stderr, code = self.adb._run_cmd(["shell", "pm", "list", "packages", "-3"])
+            if code != 0:
+                return []
+
+            apps = []
+            for line in stdout.strip().split('\n'):
+                if line.startswith('package:'):
+                    package = line.replace('package:', '').strip()
+
+                    # Get app name
+                    stdout2, _, code2 = self.adb._run_cmd([
+                        "shell", "cmd", "package", "dump", package, "|", "grep", "label="
+                    ])
+
+                    if code2 == 0 and stdout2:
+                        labels = [l.split('=')[-1] for l in stdout2.strip().split('\n') if 'label=' in l]
+                        appname = labels[0] if labels else package.split('.')[-1].title()
+                    else:
+                        appname = package.split('.')[-1].title()
+
+                    apps.append((appname, package))
+
+            return sorted(apps, key=lambda x: x[0])
+        except:
+            return []
+
+    def _extract_single_app_databases(self, package: str, appname: str) -> bool:
+        """Extract databases folder for a single app."""
+        try:
+            db_path = f"/data/data/{package}/databases/"
+
+            # Check if database folder exists
+            stdout, stderr, code = self.adb._run_cmd(["shell", "su", "-c", f"ls {db_path}"])
+            if code != 0:
+                console.print(f"[yellow]⚠ No databases folder found for {appname}[/yellow]")
+                return False
+
+            # List database files
+            files = [f.strip() for f in stdout.strip().split('\n') if f.strip()]
+            db_files = [f for f in files if f.endswith('.db') or f.endswith('.db-journal') or f.endswith('.db-shm') or f.endswith('.db-wal')]
+
+            if not db_files:
+                console.print(f"[yellow]⚠ No database files found[/yellow]")
+                return False
+
+            # Create output directory: AppName_databases/
+            app_safe_name = appname.replace(' ', '_').replace(':', '')
+            output_dir = self._get_output_path(f"{app_safe_name}_databases")
+            Path(output_dir).mkdir(parents=True, exist_ok=True)
+
+            # Extract all database files
+            extracted_count = 0
+            for db_file in db_files:
+                src = f"{db_path}{db_file}"
+                dst = str(Path(output_dir) / db_file)
+
+                stdout, stderr, code = self.adb._run_cmd(["pull", src, dst])
+                if code == 0:
+                    extracted_count += 1
+                    console.print(f"[dim]  ✓ {db_file}[/dim]")
+
+            if extracted_count > 0:
+                console.print(f"\n[green]✓ Extracted {extracted_count} database files[/green]")
                 self.extractions.append({
-                    "type": "all_databases",
-                    "files": total_files,
-                    "packages": processed_packages,
+                    "type": "app_databases",
+                    "app_name": appname,
+                    "package": package,
+                    "files": extracted_count,
                     "status": "success",
-                    "location": str(device_db_dir)
+                    "location": str(output_dir)
                 })
                 return True
             else:
-                console.print(f"[yellow]⚠ No database files found[/yellow]")
+                console.print("[red]Failed to extract databases[/red]")
                 return False
 
         except Exception as e:
@@ -531,7 +638,7 @@ def show_forensics_menu(adb_interface):
 
         console.print(f"\n[bold cyan]🔍 DIGITAL FORENSICS - {root_status}[/bold cyan]\n")
 
-        console.print("  📦 [1] Extract All Databases   - Extracts all .db files from /data/data/")
+        console.print("  📱 [1] Extract App Databases   - Select and extract app databases")
         console.print("  📋 [2] Extract System Logs     - Pull logcat system logs")
         console.print("  📝 [3] Generate Report         - Create forensics case report")
         console.print("  ❌ [0] Back to Main Menu       - Return\n")
@@ -542,7 +649,7 @@ def show_forensics_menu(adb_interface):
             return
 
         elif choice == "1":
-            forensics.extract_all_databases()
+            forensics.extract_app_databases()
 
         elif choice == "2":
             forensics.extract_system_logs()
