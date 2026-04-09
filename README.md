@@ -45,6 +45,16 @@ That's it! The app will:
 - App management tools
 - Administrative operations
 
+### 🔬 **Digital Forensics** (NEW!)
+- Extract app databases (.db files)
+- Extract app shared preferences (settings)
+- Extract app data files
+- Pull system logs (logcat)
+- List installed packages
+- Snapshot running processes
+- Extract WiFi networks
+- Generate forensics case reports
+
 ### 📊 **Advanced Tools**
 - Deep APK analysis
 - Live screen mirroring
