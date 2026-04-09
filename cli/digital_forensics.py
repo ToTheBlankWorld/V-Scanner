@@ -703,6 +703,114 @@ class DeviceForensics:
 
         return False
 
+    def extract_installed_packages(self) -> bool:
+        """Extract list of all installed packages."""
+        try:
+            console.print("[cyan]📦 Extracting installed packages...[/cyan]")
+
+            # Get all packages
+            stdout, stderr, code = self.adb._run_cmd(["shell", "pm", "list", "packages"])
+            if code != 0:
+                console.print(f"[yellow]⚠ Could not list packages[/yellow]")
+                return False
+
+            packages = [p.replace("package:", "").strip() for p in stdout.strip().split('\n') if p.startswith('package:')]
+
+            if packages:
+                output_file = self._get_output_path("installed_packages.txt")
+
+                with open(output_file, 'w', encoding='utf-8') as f:
+                    f.write(f"Total Packages: {len(packages)}\n")
+                    f.write("=" * 50 + "\n\n")
+                    for pkg in sorted(packages):
+                        f.write(f"{pkg}\n")
+
+                console.print(f"[green]✓ Extracted {len(packages)} packages[/green]")
+                self.extractions.append({
+                    "type": "installed_packages",
+                    "count": len(packages),
+                    "status": "success",
+                    "file": str(output_file)
+                })
+                return True
+            else:
+                console.print("[yellow]⚠ No packages found[/yellow]")
+                return False
+
+        except Exception as e:
+            console.print(f"[red]✗ Error: {str(e)[:100]}[/red]")
+            return False
+
+    def extract_running_processes(self) -> bool:
+        """Extract list of running processes."""
+        try:
+            console.print("[cyan]⚡ Extracting running processes...[/cyan]")
+
+            # Get running processes
+            stdout, stderr, code = self.adb._run_cmd(["shell", "ps", "-A"])
+            if code != 0:
+                console.print(f"[yellow]⚠ Could not list processes[/yellow]")
+                return False
+
+            lines = stdout.strip().split('\n')
+            process_count = len([l for l in lines if l.strip()]) - 1  # -1 for header
+
+            if process_count > 0:
+                output_file = self._get_output_path("running_processes.txt")
+
+                with open(output_file, 'w', encoding='utf-8', errors='replace') as f:
+                    f.write(stdout)
+
+                console.print(f"[green]✓ Extracted {process_count} running processes[/green]")
+                self.extractions.append({
+                    "type": "running_processes",
+                    "count": process_count,
+                    "status": "success",
+                    "file": str(output_file)
+                })
+                return True
+            else:
+                console.print("[yellow]⚠ No processes found[/yellow]")
+                return False
+
+        except Exception as e:
+            console.print(f"[red]✗ Error: {str(e)[:100]}[/red]")
+            return False
+
+    def extract_wifi_networks(self) -> bool:
+        """Extract WiFi networks saved on device."""
+        try:
+            console.print("[cyan]🌐 Extracting WiFi networks...[/cyan]")
+
+            # WiFi config is typically in /data/misc/wifi/wpa_supplicant.conf
+            wifi_conf = "/data/misc/wifi/wpa_supplicant.conf"
+
+            # Try to pull WiFi config
+            stdout, stderr, code = self.adb._run_cmd(["shell", "su", "-c", f"cat {wifi_conf}"])
+            if code == 0 and stdout:
+                output_file = self._get_output_path("wifi_networks.txt")
+
+                with open(output_file, 'w', encoding='utf-8', errors='replace') as f:
+                    f.write(stdout)
+
+                # Count networks
+                network_count = stdout.count("network={")
+                console.print(f"[green]✓ Extracted {network_count} WiFi networks[/green]")
+                self.extractions.append({
+                    "type": "wifi_networks",
+                    "count": network_count,
+                    "status": "success",
+                    "file": str(output_file)
+                })
+                return True
+            else:
+                console.print("[yellow]⚠ WiFi networks not accessible (requires root)[/yellow]")
+                return False
+
+        except Exception as e:
+            console.print(f"[red]✗ Error: {str(e)[:100]}[/red]")
+            return False
+
     def generate_report(self) -> bool:
         """Generate comprehensive forensics report with device info."""
         try:
@@ -862,10 +970,13 @@ def show_forensics_menu(adb_interface):
         console.print("  ⚙️  [2] Extract App Shared Prefs     - Extract app configuration/settings")
         console.print("  📁 [3] Extract App Files             - Extract app data files folder")
         console.print("  📋 [4] Extract System Logs           - Pull logcat system logs")
-        console.print("  📝 [5] Generate Report               - Create forensics case report")
+        console.print("  📦 [5] Extract Installed Packages    - List all installed apps")
+        console.print("  ⚡ [6] Extract Running Processes     - List running processes")
+        console.print("  🌐 [7] Extract WiFi Networks         - Pull WiFi networks history")
+        console.print("  📝 [8] Generate Report               - Create forensics case report")
         console.print("  ❌ [0] Back to Main Menu             - Return\n")
 
-        choice = console.input("[bold cyan]Select operation (0-5): [/bold cyan]").strip()
+        choice = console.input("[bold cyan]Select operation (0-8): [/bold cyan]").strip()
 
         if choice == "0":
             return
@@ -883,6 +994,15 @@ def show_forensics_menu(adb_interface):
             forensics.extract_system_logs()
 
         elif choice == "5":
+            forensics.extract_installed_packages()
+
+        elif choice == "6":
+            forensics.extract_running_processes()
+
+        elif choice == "7":
+            forensics.extract_wifi_networks()
+
+        elif choice == "8":
             forensics.generate_report()
 
         else:
