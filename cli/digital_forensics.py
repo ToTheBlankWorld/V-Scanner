@@ -67,10 +67,10 @@ class DigitalForensicsManager:
             output_file = self._get_output_path("contacts.db")
 
             # Pull contacts database
-            result = self.adb.execute_command(f"pull {contacts_db} {output_file}")
+            stdout, stderr, code = self.adb._run_cmd(["pull", contacts_db, str(output_file)])
 
-            if result:
-                contacts = self._parse_contacts_db(output_file)
+            if code == 0:
+                contacts = self._parse_contacts_db(str(output_file))
                 console.print(f"[green]✓ Extracted {len(contacts)} contacts[/green]")
                 return {
                     "type": "contacts",
@@ -91,10 +91,10 @@ class DigitalForensicsManager:
             messages_db = "/data/data/com.android.providers.telephony/databases/mmssms.db"
             output_file = self._get_output_path("messages.db")
 
-            result = self.adb.execute_command(f"pull {messages_db} {output_file}")
+            stdout, stderr, code = self.adb._run_cmd(["pull", messages_db, str(output_file)])
 
-            if result:
-                messages = self._parse_messages_db(output_file)
+            if code == 0:
+                messages = self._parse_messages_db(str(output_file))
                 console.print(f"[green]✓ Extracted {len(messages)} messages[/green]")
                 return {
                     "type": "messages",
@@ -115,10 +115,10 @@ class DigitalForensicsManager:
             calls_db = "/data/data/com.android.providers.contacts/databases/call_log.db"
             output_file = self._get_output_path("call_logs.db")
 
-            result = self.adb.execute_command(f"pull {calls_db} {output_file}")
+            stdout, stderr, code = self.adb._run_cmd(["pull", calls_db, str(output_file)])
 
-            if result:
-                calls = self._parse_call_logs_db(output_file)
+            if code == 0:
+                calls = self._parse_call_logs_db(str(output_file))
                 console.print(f"[green]✓ Extracted {len(calls)} call records[/green]")
                 return {
                     "type": "call_logs",
@@ -136,10 +136,10 @@ class DigitalForensicsManager:
         try:
             console.print("[cyan]📦 Extracting installed apps...[/cyan]")
 
-            result = self.adb.execute_command("shell pm list packages -a")
+            stdout, stderr, code = self.adb._run_cmd(["shell", "pm", "list", "packages", "-a"])
 
-            if result:
-                apps = [line.replace("package:", "").strip() for line in result.split('\n') if line.strip()]
+            if code == 0 and stdout:
+                apps = [line.replace("package:", "").strip() for line in stdout.split('\n') if line.strip()]
                 console.print(f"[green]✓ Found {len(apps)} installed applications[/green]")
                 return {
                     "type": "installed_apps",
@@ -163,10 +163,10 @@ class DigitalForensicsManager:
             chrome_db = "/data/data/com.android.chrome/app_chrome/Default/History"
             output_file = self._get_output_path("chrome_history.db")
 
-            result = self.adb.execute_command(f"pull {chrome_db} {output_file}")
+            stdout, stderr, code = self.adb._run_cmd(["pull", chrome_db, str(output_file)])
 
-            if result:
-                history = self._parse_browser_history(output_file)
+            if code == 0:
+                history = self._parse_browser_history(str(output_file))
                 history_data.extend(history)
 
             console.print(f"[green]✓ Extracted {len(history_data)} browser history entries[/green]")
@@ -189,9 +189,9 @@ class DigitalForensicsManager:
             app_dir = f"/data/data/{package_name}"
             output_dir = self._get_output_path(f"{package_name}_data")
 
-            result = self.adb.execute_command(f"pull {app_dir} {output_dir}")
+            stdout, stderr, code = self.adb._run_cmd(["pull", app_dir, str(output_dir)])
 
-            if result:
+            if code == 0:
                 console.print(f"[green]✓ Extracted application data[/green]")
                 return {
                     "type": "app_data",
@@ -212,9 +212,9 @@ class DigitalForensicsManager:
             output_dir = self._get_output_path("file_system")
             Path(output_dir).mkdir(exist_ok=True)
 
-            result = self.adb.execute_command(f"pull {path} {output_dir}")
+            stdout, stderr, code = self.adb._run_cmd(["pull", path, str(output_dir)])
 
-            if result:
+            if code == 0:
                 console.print(f"[green]✓ File system extracted[/green]")
                 return {
                     "type": "file_system",
@@ -232,14 +232,14 @@ class DigitalForensicsManager:
         try:
             console.print("[cyan]📋 Extracting system logs...[/cyan]")
 
-            result = self.adb.execute_command("logcat -d *:V")
+            stdout, stderr, code = self.adb._run_cmd(["logcat", "-d", "*:V"])
 
-            if result:
+            if code == 0 and stdout:
                 output_file = self._get_output_path("system_logs.txt")
                 with open(output_file, 'w') as f:
-                    f.write(result)
+                    f.write(stdout)
 
-                log_lines = result.count('\n')
+                log_lines = stdout.count('\n')
                 console.print(f"[green]✓ Extracted {log_lines} log entries[/green]")
                 return {
                     "type": "system_logs",
@@ -267,9 +267,9 @@ class DigitalForensicsManager:
             path = media_paths.get(media_type, "/sdcard/DCIM")
             output_dir = self._get_output_path(f"{media_type}")
 
-            result = self.adb.execute_command(f"pull {path} {output_dir}")
+            stdout, stderr, code = self.adb._run_cmd(["pull", path, str(output_dir)])
 
-            if result:
+            if code == 0:
                 console.print(f"[green]✓ {media_type.title()} extracted successfully[/green]")
                 return {
                     "type": "media",
