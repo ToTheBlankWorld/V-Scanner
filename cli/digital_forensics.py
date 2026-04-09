@@ -240,13 +240,13 @@ class DeviceForensics:
         try:
             db_path = f"/data/data/{package}/databases/"
 
-            # List files using find
-            stdout, stderr, code = self.adb._run_cmd(["shell", "su", "-c", f"find {db_path} -maxdepth 1 -type f -printf '%f\\n' 2>/dev/null"])
+            # Use find to get ALL files with full paths
+            stdout, stderr, code = self.adb._run_cmd(["shell", "su", "-c", f"find {db_path} -type f 2>/dev/null | head -100"])
             if code != 0 or not stdout.strip():
                 console.print(f"[yellow]⚠ No databases folder found for {appname}[/yellow]")
                 return False
 
-            # Get list of filenames
+            # Parse list - find returns full paths like /data/data/com.whatsapp/databases/wa.db
             file_list = [f.strip() for f in stdout.strip().split('\n') if f.strip()]
 
             if not file_list:
@@ -261,19 +261,16 @@ class DeviceForensics:
 
             # Copy ALL files
             extracted_count = 0
-            failed_count = 0
 
-            for filename in file_list:
-                # Construct full path
-                file_path = f"{db_path}{filename}"
+            for full_path in file_list:
+                # Extract just the filename from full path
+                filename = full_path.split('/')[-1]
                 dst = str(Path(output_dir) / filename)
 
-                stdout, stderr, code = self.adb._run_cmd(["pull", file_path, dst])
+                stdout, stderr, code = self.adb._run_cmd(["pull", full_path, dst])
                 if code == 0:
                     extracted_count += 1
                     console.print(f"[dim]  ✓ {filename}[/dim]")
-                else:
-                    failed_count += 1
 
             if extracted_count > 0:
                 console.print(f"\n[green]✓ Extracted {extracted_count} files[/green]")
@@ -299,13 +296,13 @@ class DeviceForensics:
         try:
             prefs_path = f"/data/data/{package}/shared_prefs/"
 
-            # List files using find with just filenames
-            stdout, stderr, code = self.adb._run_cmd(["shell", "su", "-c", f"find {prefs_path} -maxdepth 1 -type f -printf '%f\\n' 2>/dev/null"])
+            # Use find to get all files with full paths
+            stdout, stderr, code = self.adb._run_cmd(["shell", "su", "-c", f"find {prefs_path} -type f 2>/dev/null | head -100"])
             if code != 0 or not stdout.strip():
                 console.print(f"[yellow]⚠ No shared_prefs folder found for {appname}[/yellow]")
                 return False
 
-            # Get list of filenames
+            # Parse list - find returns full paths
             file_list = [f.strip() for f in stdout.strip().split('\n') if f.strip()]
 
             if not file_list:
@@ -321,12 +318,12 @@ class DeviceForensics:
             # Copy files
             extracted_count = 0
 
-            for filename in file_list:
-                # Construct full path
-                file_path = f"{prefs_path}{filename}"
+            for full_path in file_list:
+                # Extract filename from full path
+                filename = full_path.split('/')[-1]
                 dst = str(Path(output_dir) / filename)
 
-                stdout, stderr, code = self.adb._run_cmd(["pull", file_path, dst])
+                stdout, stderr, code = self.adb._run_cmd(["pull", full_path, dst])
                 if code == 0:
                     extracted_count += 1
                     console.print(f"[dim]  ✓ {filename}[/dim]")
