@@ -240,44 +240,41 @@ class DeviceForensics:
         try:
             db_path = f"/data/data/{package}/databases/"
 
-            # Check if database folder exists with root
-            stdout, stderr, code = self.adb._run_cmd(["shell", "su", "-c", f"ls -la {db_path}"])
-            if code != 0:
+            # Use find to get all files reliably
+            stdout, stderr, code = self.adb._run_cmd(["shell", "su", "-c", f"find {db_path} -type f 2>/dev/null"])
+            if code != 0 or not stdout.strip():
                 console.print(f"[yellow]⚠ No databases folder found for {appname}[/yellow]")
-                console.print(f"[dim]Path: {db_path}[/dim]")
                 return False
 
-            # List ALL files in databases folder
-            files = [f.strip() for f in stdout.strip().split('\n') if f.strip() and not f.startswith('total')]
+            # Get list of files (find returns full paths)
+            file_list = [f.strip() for f in stdout.strip().split('\n') if f.strip()]
 
-            # Filter out directory listing headers (lines with 'd' or permissions)
-            db_files = [f.split()[-1] for f in files if f.split()[-1] and not f.split()[-1].startswith('.')]
-
-            if not db_files:
-                console.print(f"[yellow]⚠ No files found in databases folder[/yellow]")
+            if not file_list:
+                console.print(f"[yellow]⚠ No files found[/yellow]")
                 return False
 
             # Create output directory: Device_database/[package]/databases/
             output_dir = self._get_output_path(f"Device_database/{package}/databases")
             Path(output_dir).mkdir(parents=True, exist_ok=True)
 
-            console.print(f"[dim]Found {len(db_files)} files, copying...[/dim]\n")
+            console.print(f"[dim]Found {len(file_list)} files, copying...[/dim]\n")
 
             # Copy ALL files from databases folder
             extracted_count = 0
             failed_count = 0
 
-            for db_file in db_files:
-                src = f"{db_path}{db_file}"
-                dst = str(Path(output_dir) / db_file)
+            for file_path in file_list:
+                # Get just the filename for display
+                filename = file_path.split('/')[-1]
+                dst = str(Path(output_dir) / filename)
 
-                stdout, stderr, code = self.adb._run_cmd(["pull", src, dst])
+                stdout, stderr, code = self.adb._run_cmd(["pull", file_path, dst])
                 if code == 0:
                     extracted_count += 1
-                    console.print(f"[dim]  ✓ {db_file}[/dim]")
+                    console.print(f"[dim]  ✓ {filename}[/dim]")
                 else:
                     failed_count += 1
-                    console.print(f"[dim]  ✗ {db_file} (error)[/dim]")
+                    console.print(f"[dim]  ✗ {filename} - {stderr.strip()[:30] if stderr else 'unknown error'}[/dim]")
 
             if extracted_count > 0:
                 console.print(f"\n[green]✓ Extracted {extracted_count} files{f' ({failed_count} failed)' if failed_count > 0 else ''}[/green]")
@@ -291,7 +288,7 @@ class DeviceForensics:
                 })
                 return True
             else:
-                console.print(f"[red]✗ Failed to extract any files[/red]")
+                console.print(f"[red]✗ Failed to extract any files (all {failed_count} failed)[/red]")
                 return False
 
         except Exception as e:
@@ -303,17 +300,16 @@ class DeviceForensics:
         try:
             prefs_path = f"/data/data/{package}/shared_prefs/"
 
-            # Check if shared_prefs folder exists
-            stdout, stderr, code = self.adb._run_cmd(["shell", "su", "-c", f"ls -la {prefs_path}"])
-            if code != 0:
+            # Use find to get all files reliably
+            stdout, stderr, code = self.adb._run_cmd(["shell", "su", "-c", f"find {prefs_path} -type f 2>/dev/null"])
+            if code != 0 or not stdout.strip():
                 console.print(f"[yellow]⚠ No shared_prefs folder found for {appname}[/yellow]")
                 return False
 
-            # Parse file list
-            files = [f.strip() for f in stdout.strip().split('\n') if f.strip() and not f.startswith('total')]
-            pref_files = [f.split()[-1] for f in files if f.split()[-1] and not f.split()[-1].startswith('.')]
+            # Get list of files
+            file_list = [f.strip() for f in stdout.strip().split('\n') if f.strip()]
 
-            if not pref_files:
+            if not file_list:
                 console.print(f"[yellow]⚠ No preference files found[/yellow]")
                 return False
 
@@ -321,23 +317,26 @@ class DeviceForensics:
             output_dir = self._get_output_path(f"Device_database/{package}/shared_prefs")
             Path(output_dir).mkdir(parents=True, exist_ok=True)
 
-            console.print(f"[dim]Found {len(pref_files)} files, copying...[/dim]\n")
+            console.print(f"[dim]Found {len(file_list)} files, copying...[/dim]\n")
 
             # Copy files
             extracted_count = 0
-            for file in pref_files:
-                src = f"{prefs_path}{file}"
-                dst = str(Path(output_dir) / file)
+            failed_count = 0
 
-                stdout, stderr, code = self.adb._run_cmd(["pull", src, dst])
+            for file_path in file_list:
+                filename = file_path.split('/')[-1]
+                dst = str(Path(output_dir) / filename)
+
+                stdout, stderr, code = self.adb._run_cmd(["pull", file_path, dst])
                 if code == 0:
                     extracted_count += 1
-                    console.print(f"[dim]  ✓ {file}[/dim]")
+                    console.print(f"[dim]  ✓ {filename}[/dim]")
                 else:
-                    console.print(f"[dim]  ✗ {file}[/dim]")
+                    failed_count += 1
+                    console.print(f"[dim]  ✗ {filename}[/dim]")
 
             if extracted_count > 0:
-                console.print(f"\n[green]✓ Extracted {extracted_count} files[/green]")
+                console.print(f"\n[green]✓ Extracted {extracted_count} files{f' ({failed_count} failed)' if failed_count > 0 else ''}[/green]")
                 self.extractions.append({
                     "type": "app_shared_prefs",
                     "app_name": appname,
