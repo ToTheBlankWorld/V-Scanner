@@ -237,7 +237,7 @@ cd cli/tools/platform-tools
 
 ### **Device not detected**
 - Enable USB debugging on device
-- Try different USB port
+- Try a different USB port
 - Restart ADB service
 - Check USB cable
 
