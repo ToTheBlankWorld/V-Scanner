@@ -85,7 +85,8 @@ Ground rules for all stages:
 **Dependencies:** Stage 10.
 **Exclusions:** sensor/forensics/mirror.
 **Acceptance criteria:** Stage 07 criteria re-verified in desktop; history round-trip test (`history/` JSON schema limited to local data).
- 
+**Delivered (2026-10-19):** scan workspace (device target/preflight + engine-supported scan types `FULL_DEVICE`/`SINGLE_APP` only, honest streamed progress, request≠acknowledgement cancellation incl. queued-cancel, stale-target revalidation, single-app "not exportable" honesty) + findings explorer (search/severity/category/provenance filters, deterministic sorts, 100-row pagination, redaction-honest detail; malformed rows cannot crash the view) + reports screen (real SC-9 export of the last completed full-device bundle with native dialogs and explicit overwrite confirm, honest refused/running/ok/failed states) + real T-08 history reader. **Scope deviations (recorded): single-app scans are not exportable (legacy export schema requires a full-device `ScanResultBundle` — honest UI copy, nothing fabricated); deep-scan URL/secret host-side path remains [UNVERIFIED] (no byte-safe transport surface in the fake; engine's `UNVERIFIED_CONDITION` honesty surfaced instead); fakes-not-hardware [M] items remain recorded-when-absent.** 765-test full suite green ×4 runs (58 new offscreen tests; one pre-existing engine export test flaked once, unreproducible — 25/25 isolated + full-suite passes); mypy 116 files clean, Ruff clean, compileall green, `DESKTOP_SMOKE_OK`. Details, engine truths and [M] limitations in `STAGE_11_IMPLEMENTATION_REPORT.md`.
+
 ## Stage 12 — Desktop remaining feature parity
 **Scope:** Sensors, forensics cockpit, mirroring, demo mode, settings completeness.
 **Dependencies:** Stage 11.
