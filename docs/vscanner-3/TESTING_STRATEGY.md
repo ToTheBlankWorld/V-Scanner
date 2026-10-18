@@ -66,9 +66,9 @@ python -m pytest "tests/integration/test_syntax_baseline.py"
 - **Syntax validation** compiles all 11 legacy modules plus the full engine package and the TUI layer (`compileall` green for `vscanner ui_terminal tests`).
 - **Async TUI tests** (Stage 05): `pytest-asyncio` runs in `asyncio_mode = "auto"` (`asyncio_default_fixture_loop_scope = "function"`), so Textual `run_test` harness coroutines need no per-test markers. Harness rules: headless `run_test(size=...)` only, `pilot.pause()` after actions, injected tmp-path `ConfigService` — never the developer's real config dir; no real device, network, root, or provisioning.
 
-## 6. Current coverage result (honest, re-measured at Stage 05)
+## 6. Current coverage result (honest, re-measured at Stage 06)
 
-Stage 02 measured cli-only TOTAL 20%. Stage 03 re-measured over `cli` + the new engine; Stage 04 added the `ui_terminal`/`ui_desktop` bridge stubs; Stage 05 added the full TUI layer to the measured source set:
+Stage 02 measured cli-only TOTAL 20%. Stage 03 re-measured over `cli` + the new engine; Stage 04 added the `ui_terminal`/`ui_desktop` bridge stubs; Stage 05 added the full TUI layer to the measured source set; Stage 06 re-measured after adding the device workspace (same command: `python -m coverage run -m pytest -q` + `report`):
 
 | Module | Statements | Missed | Coverage |
 |---|---:|---:|---:|
@@ -78,15 +78,15 @@ Stage 02 measured cli-only TOTAL 20%. Stage 03 re-measured over `cli` + the new 
 | vscanner/core/redact.py | 25 | 1 | 96% |
 | vscanner/core/errors.py | 51 | 4 | 92% |
 | vscanner/services/reports/service.py | 98 | 2 | 98% |
-| vscanner/services/orchestration.py | 35 | 0 | 100% |
-| vscanner/services/config.py | 90 | 7 | 92% |
+| vscanner/services/orchestration.py | 44 | 0 | 100% (Stage 06: + `app_listing_rows_plan`) || vscanner/services/config.py | 90 | 7 | 92% |
 | vscanner/services/doctor.py | 45 | 3 | 93% |
 | vscanner/services/jobs.py | 370 | 34 | 91% |
 | vscanner/services/scanning/* (3 modules) | 221 | 13 | ~94% |
+| vscanner/services/scanning/app_inventory.py `list_app_rows` (Stage 06) | 37 | 2 | 95% |
 | vscanner/services/adb/* (4 modules) | 181 | 44 | ~76% |
 | vscanner/services/tools/provisioning.py | 187 | 33 | 82% |
 | vscanner/services/tools/_extraction.py | 45 | 17 | 62% |
-| vscanner/services/registry.py | 61 | 17 | 72% |
+| vscanner/services/registry.py | 64 | 9 | 86% (Stage 06: + `device_info` accessor) |
 | ui_desktop/jobs_bridge_qt.py | 27 | 0 | 100% |
 | ui_terminal/jobs_bridge_async.py | 59 | 8 | 86% |
 | ui_terminal/theme.py (Stage 05) | 20 | 0 | 100% |
@@ -98,19 +98,21 @@ Stage 02 measured cli-only TOTAL 20%. Stage 03 re-measured over `cli` + the new 
 | ui_terminal/screens/shell.py (Stage 05) | 66 | 4 | 94% |
 | ui_terminal/app.py (Stage 05) | 99 | 10 | 90% |
 | ui_terminal/screens/settings.py (Stage 05) | 108 | 13 | 88% |
+| ui_terminal/backend.py (Stage 06) | 72 | 7 | 90% |
+| ui_terminal/screens/workspace.py (Stage 06) | 382 | 32 | 92% |
 | cli/main.py | 926 | 883 | 5% |
 | cli/scanner.py | 1033 | 775 | 25% |
 | cli/tools_manager.py | 282 | 165 | 41% |
 | cli/adb_setup.py | 80 | 46 | 42% |
 | cli/report_generator.py | 95 | 7 | 93% |
 | cli/permissions.py (shim) | 7 | 1 | 86% |
-| **TOTAL (cli + vscanner + ui)** | **5838** | **2837** | **51%** |
+| **TOTAL (cli + vscanner + ui)** | **6338** | **2869** | **55%** |
 
-Interpretation: the engine is well anchored (events/models/KB/redaction/reports/orchestration ≥ 92%; surgery-grade anchors on every service; jobs.py 91%) and the Stage 05 TUI layer is anchored at 88–100% via Textual headless harness tests. Legacy interactive/rich-UI paths remain uncovered by design decision (that coverage arrives with service decomposition in Stages 06–12, not by writing brittle UI tests against legacy print flows). Do **not** flatten the 51% number into a quality claim; cite the per-engine anchors.
+Interpretation: the engine is well anchored (events/models/KB/redaction/reports/orchestration ≥ 92%; surgery-grade anchors on every service; jobs.py 91%), the Stage 06 workspace slice is anchored at 90–95% (workspace 92%, backend 90%, app_inventory `list_app_rows` 95%, `app_listing_rows_plan` 100%, registry 86%) via Textual headless harness + fake-transport pipeline tests, and the Stage 05 TUI layer remains anchored at 88–100%. Legacy interactive/rich-UI paths remain uncovered by design decision (that coverage arrives with service decomposition in Stages 06–12, not by writing brittle UI tests against legacy print flows). Do **not** flatten the 55% number into a quality claim; cite the per-engine anchors.
 
 ## 7. Suite facts (Stage 02 → Stage 05)
 
-- Stage 02: **106 passed, 7 xfailed, 0 skipped** (9 files). Stage 03: **276 passed, 4 xfailed, 0 skipped** (17 files). Stage 04: **363 passed, 4 xfailed, 0 skipped** (21 files), runtime ≈ 3.5 s. Stage 05: **399 passed, 4 xfailed, 0 skipped** (24 files), runtime ≈ 22 s (Textual harness tests dominate; still device/network/root-free).
+- Stage 02: **106 passed, 7 xfailed, 0 skipped** (9 files). Stage 03: **276 passed, 4 xfailed, 0 skipped** (17 files). Stage 04: **363 passed, 4 xfailed, 0 skipped** (21 files), runtime ≈ 3.5 s. Stage 05: **399 passed, 4 xfailed, 0 skipped** (24 files), runtime ≈ 22 s (Textual harness tests dominate; still device/network/root-free). Stage 06: **446 passed, 4 xfailed, 0 skipped** (27 files), runtime ≈ 62 s (new: `test_stage06_engine.py` 10, `test_device_workspace.py` 31, `test_inventory_ui.py` 4, + import-guard/doc-consistency additions).
 - No device, no network, no root; all artifacts under pytest temp dirs; one deterministic R-07 proof spawns `sys.executable` with list-argv (never a shell string).
 - All 11 legacy modules + the whole engine byte-compile (`compileall` green).
 

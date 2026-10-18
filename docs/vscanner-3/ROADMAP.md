@@ -46,7 +46,7 @@ Ground rules for all stages:
 **Exclusions:** no device mutating operations yet; legacy CLI remains available.
 **Acceptance criteria:** TUI launches headless-tested (textual run/test harness) to a device dashboard with 0 device required; keymap documented; config round-trip test; no regression in legacy CLI.
 
-## Stage 06 — TUI device workspace
+## Stage 06 — TUI device workspace *(COMPLETE)*
 **Scope:** Device discovery/selection/switching, device info panels (incl. full info, network, build), app inventory browser with search/pagination and improved honest app-name handling.
 **Dependencies:** Stage 05 shell + Stage 03 device services.
 **Exclusions:** scanning, forensics, mirroring (staged later).

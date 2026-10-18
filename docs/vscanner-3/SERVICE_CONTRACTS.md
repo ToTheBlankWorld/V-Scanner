@@ -47,6 +47,7 @@ Legend for each contract: **Inputs/Validation · Returns · Errors · Blocking? 
 | Cancellation | Yes — between label-lookups (never interrupt the `pm list` itself mid-flight). |
 | Side effects | None. |
 | CLI preservation | Legacy menu 1 output builds from these shapes (packages identical). |
+| Stage 06 addition | `list_app_rows(include_system: bool, label_mode: Literal["legacy","exact-first"], timeout: float) -> tuple[AppInfo, ...]` — ONE `pm list packages [-3]` command (no per-package lookups), labels ALWAYS `HEURISTIC` (never claims EXACT; `exact-first` degrades honestly), `is_system` via one extra `pm list packages -s` command when `include_system=True`, non-canonical package names preserved via `AppInfo.tolerant`. Companion orchestration `app_listing_rows_plan(inventory_service, include_system)` — checkpoints `before_package_listing` AND `after_package_listing` (post-listing checkpoint ⇒ cancel-during-run deterministically ends CANCELLED), one `unit="apps"` progress event. Legacy `list_packages()` unchanged. Exercised by the Stage 06 TUI workspace through the job pipeline. |
 
 ## SC-3 ScanService (single-app, full-device)
 
