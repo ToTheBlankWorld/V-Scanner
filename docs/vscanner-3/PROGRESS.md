@@ -6,7 +6,7 @@ Persistent stage tracker. Updated at the end of every stage. **A stage may only 
 |---|---|---|---|---|
 | 00 | Repository audit and feature inventory | **COMPLETE** | 2026-10-18 | 5 audit docs on `origin/main`; safe checks (py_compile ×11, pure-layer functional check, dependency audit) recorded in audit §3.12 |
 | 01 | Architecture and migration specification | **COMPLETE** | 2026-10-18 | 7 architecture spec docs + ROADMAP clarification on `origin/main` (commit `796632d`); import graph verified acyclic; §5 consistency checklist passed |
-| 02 | Regression tests and project foundation | NOT_STARTED | — | — |
+| 02 | Regression tests and project foundation | **COMPLETE** | 2026-10-18 | `tests/` suite (106 passed / 7 strict xfail / 0 skipped) + `pyproject.toml` + `TESTING_STRATEGY.md` on `origin/main` (commit `407ee31`); hygiene: `cli/adb_config.json` untracked with example template, generated Android build report untracked (local copies preserved); Ruff clean; mypy scoped green |
 | 03 | Shared engine and service layer | NOT_STARTED | — | — |
 | 04 | Job lifecycle and event system | NOT_STARTED | — | — |
 | 05 | TUI foundation and visual design | NOT_STARTED | — | — |
@@ -55,3 +55,20 @@ Persistent stage tracker. Updated at the end of every stage. **A stage may only 
 
 - Commit: `796632d1093efa515300c3e7265f0547e79e52f0` — `docs(architecture): specify V-Scanner 3.0 implementation contracts`
 - Push to `origin/main`: SUCCESS (HTTPS; `518b652..796632d`)
+
+## Stage 02 execution log
+
+1. Git pre-flight: branch `main`; origin HTTPS `https://github.com/ToTheBlankWorld/V-Scanner.git`; fetch verified `[up to date]`; local == `origin/main` == `91f7e6e`. Pre-existing user items confirmed present and untouched throughout: modified `.gitignore` (one-line trailing-whitespace hunk), untracked `cli/python usb_charging_control.py`.
+2. Environment: Python 3.12.10; pytest 9.0.3 / ruff 0.16.8 / mypy 2.3.1 already present; `pytest-cov` 7.1.0 installed as a dev-only tool (`cli/requirements.txt` untouched).
+3. Test foundation created: `pyproject.toml` (tool config only — NO `[project]` table, production dependency declarations remain in `cli/requirements.txt`); `tests/conftest.py` (FakeAdb, isolated-cwd/config fixtures); smallest structure adopted: `tests/unit/` + `tests/integration/` (fixtures generated in-test; `tests/fixtures/` deliberately omitted).
+4. Characterization suites created (10 files): permission analysis & SDK risk (A), report generation ×3 formats with JSON schema back-compat anchors (B), ADB interface command construction / error tuples / device-line parsing with mocked subprocess (C), tool URLs + archive extraction incl. zip-slip and tar-traversal probes with generated fake archives (D), Click registration/help/safe-no-device/demo flows via CliRunner (E), known-defect records (F), syntax baseline for all 11 legacy modules, legacy static structure, config-consumer safety, coverage measurement harness.
+5. Defect separation implemented as required: **7 strict xfails** mapped to remediation rows (R-01/R-02/R-04/R-05/R-06/R-07 → tests flip when fixed; `xfail_strict=true` forces the owning stage to update markers); plus passing characterization tests documenting current buggy behavior without blessing it (R-03 silent failure, R-04 fabricated dict, R-05 optimistic root, R-06 zero pattern usages, R-07 byte-corruption mechanism, R-10 `shell=True`, tar-traversal escape, stale scrcpy URL, leftover-archive cleanup gap).
+6. Results recorded: **106 passed, 7 xfailed, 0 skipped**; suite < 2 s; no device, no network, no root; Ruff **all checks passed** (new-code baseline, `cli`/`android` excluded until migration); mypy **Success: no issues found in 10 source files** (scoped to tests with `follow_imports=silent` for legacy); syntax validation green (11/11 modules); coverage measured honestly: **TOTAL 20%** (permissions 100%, report_generator 93%, adb_setup 38%, tools_manager 37%, scanner 20%, main 6%, digital_forensics 11%) — recorded in `TESTING_STRATEGY.md` §6.
+7. Repository hygiene executed safely (mission §4): `cli/adb_config.json` (machine-specific `adb_path`, no secrets) untracked via `git rm --cached` — local copy preserved and consumers proven safe by new tests (missing-config → `None` → auto-fallback flow); committed template `cli/adb_config.example.json` (placeholders only); `.gitignore` narrowed (+13 lines: `cli/adb_config.json`, `.coverage`, `.pytest_cache/`); generated Android build report `android/build/reports/problems/problems-report.html` untracked via `git rm --cached` (existing `android/build/` rule already covered it — no further ignore change needed; no Android source or Gradle files touched). The user's `.gitignore` whitespace hunk was staged **separately**: only the stage-attributable hunks are in the committed index (`git diff --cached` vs `git diff` verified before commit).
+8. Pre-commit diff inspection: 16 files, +1378/−662; no production source, no dependency versions, no Android app source; no secrets (example config uses placeholder paths); deleted tracked config content (3 lines) leaves history intact (no history rewrite).
+9. Commit `407ee31` ("test(core): establish V-Scanner regression baseline") — 16 files. Push `91f7e6e..407ee31 main -> main` over HTTPS. Local `main` == `origin/main` == `407ee3123a4aa33e6529af3c36b52654c922beca`. Working tree after push: only the two pre-existing user items.
+
+### Commit record (Stage 02)
+
+- Commit: `407ee3123a4aa33e6529af3c36b52654c922beca` — `test(core): establish V-Scanner regression baseline`
+- Push to `origin/main`: SUCCESS (HTTPS; `91f7e6e..407ee31`)
