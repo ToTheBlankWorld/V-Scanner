@@ -150,11 +150,17 @@ class TestNavigation:
 
 
 class TestHonesty:
-    async def test_placeholder_has_no_fake_action_buttons(self, make_app) -> None:
-        """Stage 07: the scan/reports sections became live screens; the
-        honesty contract now holds for the remaining future section."""
+    async def test_future_sections_are_all_delivered_now(self, make_app) -> None:
+        """Stage 08: the roadmap's TUI parity stages are delivered — the
+        registry has no placeholder destinations left, and the monitoring
+        screen (a former Stage 08 placeholder) is a real live screen with
+        honest wording and no fake device state."""
+        from ui_terminal import sections as reg
+
         app = make_app()
         async with app.run_test() as pilot:
+            assert reg.future_sections() == (), \
+                "Stage 08 delivered every planned TUI section"
             await pilot.pause()
             app.switch_to_section("monitoring")
             await pilot.pause()
@@ -164,9 +170,9 @@ class TestHonesty:
                 b for b in buttons
                 if any(w in b for w in ("scan", "connect", "run"))
             ]
-            assert offending == [], "placeholders must not pretend to act"
+            assert offending == [], "sections must not pretend to act"
             text = _visible_text(app.screen)
-            assert "no fake device state" in text
+            assert "no snapshot yet" in text or "target" in text
 
     async def test_doctor_screen_is_report_only(self, make_app) -> None:
         app = make_app()

@@ -32,6 +32,7 @@ __all__ = [
     "WORKSPACE_TCSS",
     "SCAN_TCSS",
     "REPORTS_TCSS",
+    "STAGE08_TCSS",
     "BRAND_TAGLINE",
     "APP_TITLE",
 ]
@@ -443,4 +444,49 @@ REPORTS_TCSS = """
     margin-top: 1;
 }
 """
+
+STAGE08_TCSS = """
+#mon-devices, #fx-devices, #mr-devices {
+    height: 6;
+    max-height: 6;
+    background: $surface;
+    border: round $panel;
+    margin-bottom: 1;
+}
+
+#mon-usage, #mon-sensors, #fx-evidence, #fx-files, #fx-operations,
+#mr-handles, #demo-findings {
+    height: 1fr;
+    background: $surface;
+    border: round $panel;
+}
+
+#mon-device, #fx-device, #fx-root, #fx-case, #fx-job, #mirror-status,
+#demo-summary {
+    height: auto;
+    margin-bottom: 1;
+}
+
+#mon-explain, #mon-poll, #mon-sensors-note, #mr-explain,
+#mr-handles-note, #demo-banner {
+    height: auto;
+    margin-bottom: 1;
+}
+
+#fx-entry {
+    height: auto;
+    margin-bottom: 1;
+}
+
+#fx-input {
+    width: 1fr;
+}
+
+#ack-box {
+    width: auto;
+    background: $panel;
+}
+"""
+
+__all__ += ["STAGE08_TCSS"]
 

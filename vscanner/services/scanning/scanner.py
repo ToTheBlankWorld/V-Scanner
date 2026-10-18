@@ -22,7 +22,11 @@ import time
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Protocol, Tuple, TYPE_CHECKING
 
-from vscanner.core.errors import InputValidationError, ScanInterrupted
+from vscanner.core.errors import (
+    DeepScanUnavailable,
+    InputValidationError,
+    ScanInterrupted,
+)
 from vscanner.core.kb.permissions import analyze_permissions, get_sdk_risk, RiskLevel
 from vscanner.core.models import (
     AppInfo,
@@ -44,6 +48,11 @@ from vscanner.core.models import (
     app_severity,
 )
 from vscanner.services.scanning.app_inventory import PackageInventoryService
+from vscanner.services.scanning.deep_scan import (
+    DeepScanResult,
+    DeepScanService,
+    deep_scan_findings,
+)
 from vscanner.services.scanning.package_parser import derived_label
 
 __all__ = ["ScanService", "validate_package_name", "MAX_PACKAGE_LENGTH"]
@@ -94,6 +103,23 @@ class ScanService:
     def __init__(self, transport: _AdbTransport) -> None:
         self.inventory = PackageInventoryService(transport)
         self._transport = transport
+        self._deep_service: Optional[DeepScanService] = None  # lazy (deep only)
+
+    def _deep_scanner(self) -> DeepScanService:
+        """Lazy deep-scan stage (R-06). Requires a byte-safe transport
+        (``run_bytes``); transports without one raise
+        :class:`DeepScanUnavailable` instead of degrading silently."""
+        if self._deep_service is None:
+            run_bytes = getattr(self._transport, "run_bytes", None)
+            if not callable(run_bytes):
+                raise DeepScanUnavailable(
+                    "deep scan requires a byte-safe transport (run_bytes); "
+                    "this transport offers only text mode",
+                )
+            # guarded above: the transport does expose the byte-safe mode
+            self._deep_service = DeepScanService(
+                self._transport)  # type: ignore[arg-type]
+        return self._deep_service
 
     # ------------------------------------------------------------------ #
     # single-app analysis
@@ -141,9 +167,7 @@ class ScanService:
             )
 
         if config.deep:
-            findings = tuple(findings) + (
-                self._deep_scan_unverified_note(app, serial, config.deep),
-            )
+            findings = tuple(findings) + self._deep_findings(app, serial)
 
         return AppScanResult(app=app, findings=tuple(findings))
 
@@ -307,28 +331,45 @@ class ScanService:
             )
         return tuple(findings)
 
-    @staticmethod
-    def _deep_scan_unverified_note(app: AppInfo, serial: Optional[str],
-                                   deep: bool) -> Finding:
-        return make_finding(
-            kind=FindingCategory.INSECURE_URL,
-            severity=FindingSeverity.INFO,
-            title="Deep-scan URL analysis unavailable",
-            detail=(
-                "deep=true requested, but the new engine does not yet perform "
-                "on-device APK string extraction (planned Stage 08); no URL "
-                "findings are claimed."
-            ),
-            evidence=(
-                Evidence.of(
-                    EvidenceKind.UNVERIFIED_CONDITION,
-                    description="deep-scan requested; extraction stage not implemented yet",
-                    source=f"dumpsys package {app.package_name}",
+    def _deep_findings(self, app: AppInfo, serial: Optional[str]) -> Tuple[Finding, ...]:
+        """Deep-scan stage (R-06 / SC-3 remediation): pull the APK with the
+        byte-safe ``run_bytes`` foundation, extract strings host-side, and
+        execute the documented URL/credential patterns.
+
+        Failure paths (no APK path, transport error, empty byte stream,
+        text-only transport) raise :class:`DeepScanUnavailable` from the
+        service and are translated here into an honest
+        ``UNVERIFIED_CONDITION`` finding — never a silently empty result,
+        and never a fabricated "clean" claim.
+        """
+        try:
+            result: DeepScanResult = self._deep_scanner().scan(app.package_name)
+        except DeepScanUnavailable as exc:
+            return (
+                make_finding(
+                    kind=FindingCategory.INSECURE_URL,
+                    severity=FindingSeverity.INFO,
+                    title="Deep-scan URL/secret analysis unavailable",
+                    detail=(
+                        f"deep=true requested, but the APK byte extraction "
+                        f"failed: {exc.message}. No URL or secret findings "
+                        f"are claimed."
+                    ),
+                    evidence=(
+                        Evidence.of(
+                            EvidenceKind.UNVERIFIED_CONDITION,
+                            description=(
+                                "deep scan requested; extraction unavailable: "
+                                f"{exc.message}"
+                            ),
+                            source=f"dumpsys package {app.package_name}",
+                        ),
+                    ),
+                    app=app,
+                    device_serial=serial,
                 ),
-            ),
-            app=app,
-            device_serial=serial,
-        )
+            )
+        return deep_scan_findings(app, serial, result)
 
     # ------------------------------------------------------------------ #
     # summary

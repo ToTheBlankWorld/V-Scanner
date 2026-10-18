@@ -49,6 +49,22 @@ class FakeAdb:
             return self.responses[0]
         return self.responses.pop(0)
 
+    def run_text(self, cmd, timeout: float = 30.0):
+        """Engine-shaped text execution (Stage 08 delegation seam):
+        Engine services read ``stdout``/``stderr``/``returncode`` off the
+        transport; legacy fakes replay through the same responses."""
+        stdout, stderr, code = self._run_cmd(list(cmd), int(timeout))
+        return subprocess.CompletedProcess(
+            args=cmd, returncode=code, stdout=stdout, stderr=stderr)
+
+    def run_bytes(self, cmd, timeout: float = 30.0) -> bytes:
+        """Engine-shaped byte execution for fakes: binary-safe payloads are
+        simulated by re-encoding the queued text (adequate for the seams
+        legacy tests exercise; real bytes go through ADBInterface/
+        SubprocessAdbClient in the engine tests)."""
+        stdout, _, _ = self._run_cmd(list(cmd), int(timeout))
+        return (stdout or "").encode("utf-8", errors="surrogateescape")
+
     def call_strings(self) -> list[str]:
         return [repr(call) for call in self.calls]
 

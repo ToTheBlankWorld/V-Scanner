@@ -53,6 +53,7 @@ from vscanner.core.events import (
     JobKind,
     JobLogChunkEvent,
     JobProgressEvent,
+    JobSnapshotStreamEvent,
     JobStartedEvent,
     JobState,
     JobTerminalEvent,
@@ -237,6 +238,23 @@ class JobContext:
             level=level,
             message=redact_text((message or "")[:LOG_MESSAGE_MAX_CHARS]),
         ))
+
+    def emit_snapshot(self, payload: object) -> bool:
+        """Monitor-lane payload emission (SC-6 Stage 08).
+
+        Accepts only the honest monitor models — a poll never smuggles
+        free-text "status" into the stream (typed payloads keep the
+        snapshot channel renderable and honest).
+        """
+        from vscanner.core.models import HardwareUsageSnapshot, SensorReading
+
+        if not isinstance(payload, (HardwareUsageSnapshot, SensorReading)):
+            raise InputValidationError(
+                "JobContext.emit_snapshot requires a HardwareUsageSnapshot "
+                "or SensorReading payload", {"field": "payload"},
+            )
+        return self._manager._emit(
+            self._job_id, JobSnapshotStreamEvent(payload=payload))
 
 
 class _JobRecord:

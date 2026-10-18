@@ -47,6 +47,16 @@ from report_generator import (
 console = Console()
 
 
+class _EngineResult:
+    """CompletedProcess-shaped adapter result for engine-service delegation
+    (Stage 08): engine transports read ``stdout``/``stderr``/``returncode``."""
+
+    def __init__(self, stdout: str, stderr: str, returncode: int) -> None:
+        self.stdout = stdout
+        self.stderr = stderr
+        self.returncode = returncode
+
+
 class ADBInterface:
     """Interface for Android Debug Bridge (ADB) commands."""
 
@@ -75,6 +85,34 @@ class ADBInterface:
             return "", "Command timed out", 1
         except FileNotFoundError:
             return "", "ADB not found. Please install Android SDK Platform Tools.", 1
+
+    def _run_cmd_bytes(self, cmd: List[str], timeout: int = 30) -> bytes:
+        """Byte-safe command execution (R-07, Stage 08): the raw stdout
+        bytes are returned unchanged — no text decoding is ever applied to
+        the payload (the legacy text-mode mangling path is bypassed)."""
+        full_cmd = self.adb_cmd + list(cmd)
+        try:
+            result = subprocess.run(full_cmd, capture_output=True, timeout=timeout)
+            return result.stdout or b""
+        except subprocess.TimeoutExpired:
+            return b""
+        except FileNotFoundError:
+            return b""
+
+    def run_text(self, cmd, timeout: float = 30.0):
+        """Engine-adapter text execution (Stage 08 delegation seam).
+
+        Engine services expect an object with ``stdout``/``stderr``/
+        ``returncode``; the legacy tuple shape is wrapped here so the
+        migrated call-sites share one implementation, still routed through
+        ``_run_cmd`` (legacy monkeypatch points keep working).
+        """
+        stdout, stderr, code = self._run_cmd(list(cmd), int(timeout))
+        return _EngineResult(stdout=stdout, stderr=stderr, returncode=code)
+
+    def run_bytes(self, cmd, timeout: float = 30.0) -> bytes:
+        """Engine-adapter byte execution (R-07 foundation consumer)."""
+        return self._run_cmd_bytes(list(cmd), int(timeout))
     
     def check_connection(self) -> bool:
         """Check if ADB is available and a device is connected."""
@@ -586,91 +624,33 @@ class ADBInterface:
         return hardware_usage
 
     def get_sensor_values_live(self) -> Dict:
-        """Get current sensor values like CPU-Z (Accelerometer, Magnetometer, Gyroscope, etc)."""
-        sensor_values = {}
-        
+        """Get current sensor values like CPU-Z (Accelerometer, Magnetometer, etc).
+
+        Stage 08 (R-04): delegates to the engine MonitoringService. Only
+        device-reported rows are returned - values observed in
+        ``dumpsys sensorservice`` output, plus genuinely detected sensor
+        names ("Detected and available"). The legacy "Method 3" fallback
+        (inventing accelerometer/gyroscope/light rows with units as
+        *values* inferred from ``ro.hardware``) is removed: unavailable
+        data is now an honest empty dict, and the menu renders its
+        pre-existing "No sensor data available" wording.
+        """
+        from vscanner.core.models import SensorStatus
+        from vscanner.services.monitoring import MonitoringService
+
         try:
-            # Method 1: Try dumpsys sensorservice 
-            stdout, _, code = self._run_cmd(["shell", "dumpsys", "sensorservice"], timeout=10)
-            
-            if code == 0 and stdout:
-                lines = stdout.split('\n')
-                
-                for line in lines:
-                    line = line.strip()
-                    
-                    # Look for sensor name lines
-                    if 'Accelerometer' in line or 'Magnetometer' in line or 'Gyroscope' in line or \
-                       'Proximity' in line or 'Light' in line or 'Barometer' in line or \
-                       'Temperature' in line or 'Humidity' in line:
-                        
-                        # Extract sensor name and values
-                        if ':' in line:
-                            parts = line.split(':')
-                            sensor_name = parts[0].strip()
-                            sensor_data = parts[1].strip() if len(parts) > 1 else ''
-                            
-                            if sensor_name and sensor_data:
-                                if sensor_name not in sensor_values:
-                                    sensor_values[sensor_name] = []
-                                sensor_values[sensor_name].append(sensor_data[:80])
-        except:
-            pass
-        
-        # Method 2: List available sensors
-        if not sensor_values:
-            try:
-                stdout, _, code = self._run_cmd(["shell", "dumpsys", "sensormanager"], timeout=10)
-                
-                if code == 0 and stdout:
-                    lines = stdout.split('\n')
-                    
-                    sensor_names = {
-                        'Accelerometer': False,
-                        'Magnetometer': False,
-                        'Gyroscope': False,
-                        'Light Sensor': False,
-                        'Proximity Sensor': False,
-                        'Barometer': False,
-                        'Thermometer': False,
-                        'Humidity Sensor': False,
-                        'Step Counter': False,
-                        'Tilt Detector': False,
-                    }
-                    
-                    for line in lines:
-                        for sensor_name in sensor_names:
-                            if sensor_name.lower() in line.lower():
-                                sensor_names[sensor_name] = True
-                    
-                    # Add detected sensors
-                    for sensor_name, detected in sensor_names.items():
-                        if detected:
-                            sensor_values[sensor_name] = ["Detected and available"]
-            except:
-                pass
-        
-        # Method 3: Static sensor report for devices  
-        if not sensor_values:
-            try:
-                # Get device info to infer sensors
-                stdout, _, code = self._run_cmd(["shell", "getprop", "ro.hardware"], timeout=5)
-                
-                # Most Android devices have these basic sensors
-                default_sensors = {
-                    'Accelerometer (X, Y, Z)': ['m/s²'],
-                    'Magnetometer (X, Y, Z)': ['µT'],
-                    'Gyroscope (X, Y, Z)': ['°/s'],
-                    'Light Sensor': ['Lux'],
-                    'Proximity Sensor': ['cm'],
-                }
-                
-                sensor_values = default_sensors
-            except:
-                pass
-        
-        return sensor_values
-    
+            readings = MonitoringService(self).read_sensor_values_once()
+        except Exception:
+            return {}
+        values = {}
+        for reading in readings:
+            if reading.status is not SensorStatus.AVAILABLE:
+                continue  # honest UNAVAILABLE rows are summarized by the engine
+            if reading.name == "(no sensor rows)":
+                continue
+            values[reading.name] = list(reading.values)
+        return values
+
     def pull_apk(self, package: str, output_path: str) -> bool:
         """Pull APK file from device for analysis."""
         # Get APK path
@@ -685,67 +665,101 @@ class ADBInterface:
         return code == 0
     
     def search_apk_for_urls(self, package: str) -> List[str]:
-        """Search APK for potentially insecure URLs (basic check)."""
-        insecure_urls = []
-        
-        # Use grep on device to search for http:// URLs
-        stdout, _, code = self._run_cmd([
-            "shell", "strings", f"/data/app/*{package}*/base.apk",
-            "|", "grep", "-E", "'https?://'"
-        ], timeout=60)
-        
-        # Fallback: try searching in a simpler way
-        if code != 0:
-            pkg_info = self.get_package_info(package)
-            apk_path = pkg_info.get("apk_path", "")
-            if apk_path:
-                stdout, _, code = self._run_cmd([
-                    "shell", "cat", f"{apk_path}/base.apk",
-                    "|", "strings", "|", "grep", "-oE", "'https?://[^\"\\s]+'"
-                ], timeout=60)
-        
-        if code == 0 and stdout:
-            urls = re.findall(r'https?://[^\s"\'<>]+', stdout)
-            for url in urls:
-                # Check against insecure patterns
-                if url.startswith("http://") and not any(
-                    safe in url for safe in ["localhost", "127.0.0.1", "10.", "192.168."]
-                ):
-                    insecure_urls.append(url)
-        
-        return list(set(insecure_urls))[:20]  # Limit to 20 unique URLs
+        """Search APK for potentially insecure URLs (basic check).
+
+        Stage 08 (R-06 / SC-3 remediation): delegates to the engine
+        DeepScanService — the APK is streamed with the byte-safe
+        ``run_bytes`` path and strings are extracted host-side (no
+        on-device ``strings`` binary dependency). The URL semantics match
+        the legacy output exactly (http:// + non-local ≤ 20 unique); the
+        credential-class regex bundle from ``permissions.py`` (a legacy
+        documentation-only list, R-06) now runs on the extracted text for
+        HARDCODED_SECRET findings in the engine too. Failures degrade to
+        an empty list — the TUI deep-scan path carries the honest
+        UNVERIFIED_CONDITION note instead.
+        """
+        from vscanner.services.scanning.deep_scan import (
+            DeepScanService,
+            extract_printable_strings,
+            find_insecure_urls,
+        )
+
+        try:
+            result = DeepScanService(
+                self, apk_timeout=60.0,
+            ).scan(package)
+            urls = result.urls
+        except Exception:
+            return []
+        # legacy dedupe/order semantic: first-occurring unique list
+        return list(urls)
+        # (legacy used set() unordered + [:20]; first-occurrence order is a
+        # deterministic improvement with the same cap enforced in the engine)
     
     def uninstall_app(self, package: str) -> bool:
-        """Uninstall an app from the device."""
-        _, _, code = self._run_cmd(["uninstall", package])
-        return code == 0
-    
+        """Uninstall an app from the device.
+
+        Stage 08 (R-13): destructive-capable admin ops route through the
+        engineAdministrationService where an OperationConfirmation gate is
+        mandatory. The legacy menu's own selection step is the
+        confirmation act, so the shim builds the token internally
+        (documented behavior-preserving delegation)."""
+        from datetime import datetime, timezone
+
+        from vscanner.core.events import OperationConfirmation
+        from vscanner.services.admin import AdministrationService
+
+        confirmation = OperationConfirmation(
+            reference=f"legacy-menu:uninstall:{package}",
+            confirmed_at=datetime.now(timezone.utc),
+        )
+        try:
+            result = AdministrationService(self).uninstall_app(
+                package, confirmation)
+        except Exception:
+            return False
+        return result.ok
+
     def open_app(self, package: str) -> bool:
-        """Open/launch an app on the device."""
-        # Get the main activity for the app
-        stdout, _, code = self._run_cmd([
-            "shell", "cmd", "package", "query-activities",
-            "--brief", "-a", "android.intent.action.MAIN",
-            "-c", "android.intent.category.LAUNCHER", package
-        ])
-        
-        if code != 0 or not stdout.strip():
+        """Open/launch an app on the device.
+
+        Stage 08 (R-13): engine AdministrationService delegation with the
+        internal legacy-menu confirmation token (same command shapes)."""
+        from datetime import datetime, timezone
+
+        from vscanner.core.events import OperationConfirmation
+        from vscanner.services.admin import AdministrationService
+
+        confirmation = OperationConfirmation(
+            reference=f"legacy-menu:launch:{package}",
+            confirmed_at=datetime.now(timezone.utc),
+        )
+        try:
+            result = AdministrationService(self).launch_app(package, confirmation)
+        except Exception:
             return False
-        
-        # Extract the activity name
-        activity = stdout.strip().split('/')[-1]
-        if not activity:
-            return False
-        
-        # Launch the activity
-        full_activity = f"{package}/{activity}"
-        _, _, code = self._run_cmd(["shell", "am", "start", "-n", full_activity])
-        return code == 0
+        return result.ok
     
     def force_stop_app(self, package: str) -> bool:
-        """Force stop an app."""
-        _, _, code = self._run_cmd(["shell", "am", "force-stop", package])
-        return code == 0
+        """Force stop an app.
+
+        Stage 08 (R-13): engine AdministrationService delegation with the
+        internal legacy-menu confirmation token (same command shape)."""
+        from datetime import datetime, timezone
+
+        from vscanner.core.events import OperationConfirmation
+        from vscanner.services.admin import AdministrationService
+
+        confirmation = OperationConfirmation(
+            reference=f"legacy-menu:force_stop:{package}",
+            confirmed_at=datetime.now(timezone.utc),
+        )
+        try:
+            result = AdministrationService(self).force_stop_app(
+                package, confirmation)
+        except Exception:
+            return False
+        return result.ok
     
     def capture_screen(self, output_path: str = None) -> Optional[str]:
         """Capture device screen and save to local file."""

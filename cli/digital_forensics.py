@@ -1,981 +1,365 @@
 #!/usr/bin/env python3
 """
 Digital Forensics Module - V Scanner
-Simple, effective forensics operations for Android devices
+Simple, effective forensics operations for Android devices.
+
+Stage 08 port: this module is now a thin legacy-UX adapter over the shared
+engine ForensicsService (``vscanner/services/forensics.py``). Behavioral
+changes are the *documented Stage 08 remediations*:
+
+* R-05: root status comes from the verified tri-state probe. The legacy
+  "assume ROOTED when detection fails" fallback is gone — failed
+  detection now shows "root status unknown" and no longer claims root.
+* R-07: app databases/prefs/files go through the byte-safe ``exec-out``
+  /``adb pull`` path with per-file sha256 records; the text-mode
+  decode→rewrite path that corrupted NUL bytes and non-UTF-8 payloads is
+  gone.
+* R-12: the WiFi extraction writes a redacted file by default
+  (psk/password values withheld). No cleartext-PSK flow is exposed
+  through the legacy menu (the explicit double-confirm flow belongs to
+  the TUI cockpit).
+* R-03: the four silent-failure phantom extractors (call logs, contacts,
+  messages, browser history) and their dead sqlite parsers no longer
+  exist; their menu entries were never surfaced (the menu carries the
+  eight honest operations).
+
+The console output/wording intentionally keeps the legacy labels and the
+eight-item menu structure.
 """
 
 import json
-import sqlite3
 import subprocess
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Any
+from typing import Any, Dict, List, Optional, Tuple
 
 from rich.console import Console
-from rich.table import Table
 from rich.panel import Panel
+
+from vscanner.core.paths import cases_dir
+from vscanner.services.forensics import ForensicsService
 
 console = Console()
 
 
 class DeviceForensics:
-    """Simple device forensics manager."""
+    """Legacy forensics menu face over the engine ForensicsService."""
 
-    def __init__(self, adb_interface):
-        """Initialize forensics with ADB interface."""
+    def __init__(self, adb_interface, case_root: Optional[Path] = None):
+        """Initialize forensics with the ADB interface and a case root.
+
+        ``case_root`` defaults to the Stage 08 approved location
+        (``<app-data>/forensics_cases``); the legacy repo-local
+        ``cli/forensics_cases`` default is retired (path-migration
+        approval documented in SERVICE_CONTRACTS)."""
         self.adb = adb_interface
-        self.case_dir = Path(__file__).parent / "forensics_cases"
+        self.case_dir = Path(case_root) if case_root is not None else cases_dir()
         self.case_dir.mkdir(parents=True, exist_ok=True)
+        self._svc = ForensicsService(self.adb, base_dir=self.case_dir)
         self.current_case = None
-
-        # For Apatch and other custom roots, auto-detection is unreliable
-        # Try detection, but if it fails, assume rooted
-        # (User will know if their device is rooted)
-        self.is_rooted = self._check_root_safe()
-
+        self.manifest = None
+        self.root_status = self._check_root_safe()
         self._show_root_status()
-        self.extractions = []
+        self.extractions: List[Dict[str, Any]] = []
 
-    def extract_app_databases(self) -> bool:
-        """Extract databases from user-selected app."""
+    # -- root status (R-05 verified tri-state) ------------------------------ #
+
+    def _check_root_safe(self) -> str:
+        """Verified tri-state probe (legacy call-site shape preserved).
+
+        Returns the honest word "rooted" | "not-rooted" | "unknown";
+        ``is_rooted`` (below) stays False unless the root is CONFIRMED —
+        detection failure is never mapped to a claimed state (R-05)."""
         try:
-            console.print("[bold cyan]📱 Extract App Databases[/bold cyan]\n")
-
-            # Step 1: Choose System or 3rd Party
-            console.print("  [1] System Apps")
-            console.print("  [2] Third-Party Apps\n")
-
-            app_type = console.input("[bold cyan]Select app type (1-2): [/bold cyan]").strip()
-
-            if app_type == "1":
-                apps = self._get_system_apps()
-            elif app_type == "2":
-                apps = self._get_third_party_apps()
-            else:
-                console.print("[red]Invalid choice[/red]")
-                return False
-
-            if not apps:
-                console.print("[yellow]No apps found[/yellow]")
-                return False
-
-            # Step 2: Show paginated list and select app
-            selection = self._select_app_from_list_for_extraction(apps)
-            if not selection:
-                return False
-
-            appname, package = selection
-            console.print(f"\n[cyan]Extracting databases for: {appname}[/cyan]")
-            return self._extract_single_app_databases(package, appname)
-
-        except Exception as e:
-            console.print(f"[red]✗ Error: {str(e)[:100]}[/red]")
-            return False
-
-    def extract_app_shared_prefs(self) -> bool:
-        """Extract shared preferences from user-selected app."""
-        try:
-            console.print("[bold cyan]⚙️  Extract App Shared Preferences[/bold cyan]\n")
-
-            # Step 1: Choose System or 3rd Party
-            console.print("  [1] System Apps")
-            console.print("  [2] Third-Party Apps\n")
-
-            app_type = console.input("[bold cyan]Select app type (1-2): [/bold cyan]").strip()
-
-            if app_type == "1":
-                apps = self._get_system_apps()
-            elif app_type == "2":
-                apps = self._get_third_party_apps()
-            else:
-                console.print("[red]Invalid choice[/red]")
-                return False
-
-            if not apps:
-                console.print("[yellow]No apps found[/yellow]")
-                return False
-
-            # Step 2: Show paginated list and select app
-            selection = self._select_app_from_list_for_extraction(apps)
-            if not selection:
-                return False
-
-            appname, package = selection
-            console.print(f"\n[cyan]Extracting shared prefs for: {appname}[/cyan]")
-            return self._extract_single_app_shared_prefs(package, appname)
-
-        except Exception as e:
-            console.print(f"[red]✗ Error: {str(e)[:100]}[/red]")
-            return False
-
-    def extract_app_files(self) -> bool:
-        """Extract files folder from user-selected app."""
-        try:
-            console.print("[bold cyan]📁 Extract App Files[/bold cyan]\n")
-
-            # Step 1: Choose System or 3rd Party
-            console.print("  [1] System Apps")
-            console.print("  [2] Third-Party Apps\n")
-
-            app_type = console.input("[bold cyan]Select app type (1-2): [/bold cyan]").strip()
-
-            if app_type == "1":
-                apps = self._get_system_apps()
-            elif app_type == "2":
-                apps = self._get_third_party_apps()
-            else:
-                console.print("[red]Invalid choice[/red]")
-                return False
-
-            if not apps:
-                console.print("[yellow]No apps found[/yellow]")
-                return False
-
-            # Step 2: Show paginated list and select app
-            selection = self._select_app_from_list_for_extraction(apps)
-            if not selection:
-                return False
-
-            appname, package = selection
-            console.print(f"\n[cyan]Extracting files for: {appname}[/cyan]")
-            return self._extract_single_app_files(package, appname)
-
-        except Exception as e:
-            console.print(f"[red]✗ Error: {str(e)[:100]}[/red]")
-            return False
-
-    def _select_app_from_list_for_extraction(self, apps: List[tuple]) -> Optional[tuple]:
-        """Simple app selection - show 50, ask for next batch or package name."""
-        if not apps:
-            console.print("[yellow]No apps found[/yellow]")
-            return None
-
-        page = 0
-        apps_per_page = 50
-
-        while True:
-            start_idx = page * apps_per_page
-            end_idx = start_idx + apps_per_page
-            current_page_apps = apps[start_idx:end_idx]
-
-            console.print(f"\n[dim]Showing {start_idx + 1}-{min(end_idx, len(apps))} of {len(apps)} apps:[/dim]\n")
-
-            # Display apps for this page
-            for idx, (appname, package) in enumerate(current_page_apps, 1):
-                console.print(f"  [{idx}] {appname}")
-                console.print(f"      └─ {package}\n")
-
-            # Get user input
-            console.print("[dim]Enter: app number (1-50), 'next' for more apps, or 'pkg:com.example.app' for custom package[/dim]")
-            selection = console.input("[bold cyan]Select: [/bold cyan]").strip().lower()
-
-            # Check if trying to get next batch
-            if selection == "next":
-                if end_idx < len(apps):
-                    page += 1
-                    console.print(f"[dim]Showing next batch...[/dim]\n")
-                    continue
-                else:
-                    console.print("[yellow]No more apps[/yellow]")
-                    continue
-
-            # Check if entering package manually
-            if selection.startswith("pkg:"):
-                pkg = selection.replace("pkg:", "").strip()
-                if pkg:
-                    appname = pkg.split('.')[-1].title()
-                    console.print(f"[green]✓ Using: {pkg}[/green]")
-                    return (appname, pkg)
-                continue
-
-            # Try to parse as app number
-            try:
-                choice = int(selection)
-
-                if choice < 1 or choice > len(current_page_apps):
-                    console.print(f"[red]Invalid - choose 1-{len(current_page_apps)}, or type 'next', or 'pkg:com.example'[/red]")
-                    continue
-
-                # User selected an app
-                return current_page_apps[choice - 1]
-
-            except ValueError:
-                console.print("[red]Invalid input[/red]")
-                continue
-
-    def _get_system_apps(self) -> List[tuple]:
-        """Get list of system apps (app name, package name)."""
-        try:
-            stdout, stderr, code = self.adb._run_cmd(["shell", "pm", "list", "packages", "-s"])
-            if code != 0:
-                console.print(f"[red]Error getting system apps: {stderr}[/red]")
-                return []
-
-            apps = []
-            for line in stdout.strip().split('\n'):
-                if line.startswith('package:'):
-                    package = line.replace('package:', '').strip()
-                    # Use package name as fallback if we can't get app name
-                    appname = package.split('.')[-1].title()
-                    apps.append((appname, package))
-
-            return sorted(apps, key=lambda x: x[0])
-        except Exception as e:
-            console.print(f"[red]Error getting system apps: {e}[/red]")
-            return []
-
-    def _get_third_party_apps(self) -> List[tuple]:
-        """Get list of third-party apps (app name, package name)."""
-        try:
-            stdout, stderr, code = self.adb._run_cmd(["shell", "pm", "list", "packages", "-3"])
-            if code != 0:
-                console.print(f"[red]Error getting 3rd party apps: {stderr}[/red]")
-                return []
-
-            apps = []
-            for line in stdout.strip().split('\n'):
-                if line.startswith('package:'):
-                    package = line.replace('package:', '').strip()
-                    # Use package name as fallback if we can't get app name
-                    appname = package.split('.')[-1].title()
-                    apps.append((appname, package))
-
-            return sorted(apps, key=lambda x: x[0])
-        except Exception as e:
-            console.print(f"[red]Error getting 3rd party apps: {e}[/red]")
-            return []
-
-    def _extract_single_app_databases(self, package: str, appname: str) -> bool:
-        """Extract ALL files from app's databases folder using cat."""
-        try:
-            db_path = f"/data/data/{package}/databases/"
-
-            # Use simple ls to list files
-            stdout, stderr, code = self.adb._run_cmd(["shell", "su", "-c", f"ls -1 {db_path} 2>/dev/null"])
-            if code != 0 or not stdout.strip():
-                console.print(f"[yellow]⚠ No databases folder found for {appname}[/yellow]")
-                return False
-
-            # Parse list
-            file_list = [f.strip() for f in stdout.strip().split('\n') if f.strip()]
-
-            if not file_list:
-                console.print(f"[yellow]⚠ No files found[/yellow]")
-                return False
-
-            # Create output directory
-            output_dir = self._get_output_path(f"Device_database/{package}/databases")
-            Path(output_dir).mkdir(parents=True, exist_ok=True)
-
-            console.print(f"[dim]Found {len(file_list)} files, copying...[/dim]\n")
-
-            # Try first file to debug
-            test_file = file_list[0]
-            test_path = f"{db_path}{test_file}"
-
-            console.print(f"[dim]Testing: cat '{test_path}'[/dim]")
-            stdout, stderr, code = self.adb._run_cmd(["shell", "su", "-c", f"cat '{test_path}'"])
-            console.print(f"[dim]Result - code: {code}, stderr: {stderr[:50] if stderr else 'none'}, stdout len: {len(stdout) if stdout else 0}[/dim]\n")
-
-            # Copy ALL files
-            extracted_count = 0
-
-            for filename in file_list:
-                file_path = f"{db_path}{filename}"
-                dst = str(Path(output_dir) / filename)
-
-                # Use cat to read file
-                stdout, stderr, code = self.adb._run_cmd(["shell", "su", "-c", f"cat '{file_path}'"])
-
-                if code == 0 and stdout:
-                    try:
-                        # Try to write as binary
-                        with open(dst, 'wb') as f:
-                            if isinstance(stdout, bytes):
-                                f.write(stdout)
-                            else:
-                                f.write(stdout.encode('utf-8', errors='replace'))
-                        extracted_count += 1
-                        console.print(f"[dim]  ✓ {filename}[/dim]")
-                    except Exception as write_err:
-                        console.print(f"[dim]  ✗ {filename} - write error[/dim]")
-                else:
-                    console.print(f"[dim]  ✗ {filename} - cat failed[/dim]")
-
-            if extracted_count > 0:
-                console.print(f"\n[green]✓ Extracted {extracted_count} files[/green]")
-                self.extractions.append({
-                    "type": "app_databases",
-                    "app_name": appname,
-                    "package": package,
-                    "files": extracted_count,
-                    "status": "success",
-                    "location": str(output_dir)
-                })
-                return True
-            else:
-                console.print(f"[red]✗ Failed to extract any files[/red]")
-                return False
-
-        except Exception as e:
-            console.print(f"[red]✗ Error: {str(e)[:100]}[/red]")
-            return False
-
-    def _extract_single_app_shared_prefs(self, package: str, appname: str) -> bool:
-        """Extract ALL files from app's shared preferences folder."""
-        try:
-            prefs_path = f"/data/data/{package}/shared_prefs/"
-
-            # Use simple ls to list files
-            stdout, stderr, code = self.adb._run_cmd(["shell", "su", "-c", f"ls -1 {prefs_path} 2>/dev/null"])
-            if code != 0 or not stdout.strip():
-                console.print(f"[yellow]⚠ No shared_prefs folder found for {appname}[/yellow]")
-                return False
-
-            # Parse list - ls -1 returns just filenames
-            file_list = [f.strip() for f in stdout.strip().split('\n') if f.strip()]
-
-            if not file_list:
-                console.print(f"[yellow]⚠ No preference files found[/yellow]")
-                return False
-
-            # Create output directory
-            output_dir = self._get_output_path(f"Device_database/{package}/shared_prefs")
-            Path(output_dir).mkdir(parents=True, exist_ok=True)
-
-            console.print(f"[dim]Found {len(file_list)} files, copying...[/dim]\n")
-
-            # Copy files
-            extracted_count = 0
-
-            for filename in file_list:
-                # Build full path
-                file_path = f"{prefs_path}{filename}"
-                dst = str(Path(output_dir) / filename)
-
-                stdout, stderr, code = self.adb._run_cmd(["pull", file_path, dst])
-                if code == 0:
-                    extracted_count += 1
-                    console.print(f"[dim]  ✓ {filename}[/dim]")
-
-            if extracted_count > 0:
-                console.print(f"\n[green]✓ Extracted {extracted_count} files[/green]")
-                self.extractions.append({
-                    "type": "app_shared_prefs",
-                    "app_name": appname,
-                    "package": package,
-                    "files": extracted_count,
-                    "status": "success",
-                    "location": str(output_dir)
-                })
-                return True
-            else:
-                console.print("[red]Failed to extract shared preferences[/red]")
-                return False
-
-        except Exception as e:
-            console.print(f"[red]✗ Error: {str(e)[:100]}[/red]")
-            return False
-
-    def _extract_single_app_files(self, package: str, appname: str) -> bool:
-        """Extract ALL files from app's files folder."""
-        try:
-            files_path = f"/data/data/{package}/files/"
-
-            # Check if files folder exists
-            stdout, stderr, code = self.adb._run_cmd(["shell", "su", "-c", f"find {files_path} -type f 2>/dev/null"])
-            if code != 0:
-                console.print(f"[yellow]⚠ No files folder found for {appname}[/yellow]")
-                return False
-
-            file_list = [f.strip() for f in stdout.strip().split('\n') if f.strip()]
-
-            if not file_list:
-                console.print(f"[yellow]⚠ No files found[/yellow]")
-                return False
-
-            # Create output directory
-            output_dir = self._get_output_path(f"Device_database/{package}/files")
-            Path(output_dir).mkdir(parents=True, exist_ok=True)
-
-            console.print(f"[dim]Found {len(file_list)} files, copying...[/dim]\n")
-
-            extracted_count = 0
-            for file_path in file_list:
-                # Get relative path
-                rel_path = file_path.replace(files_path, "")
-                dst = str(Path(output_dir) / rel_path)
-
-                # Create subdirectories
-                Path(dst).parent.mkdir(parents=True, exist_ok=True)
-
-                stdout, stderr, code = self.adb._run_cmd(["pull", file_path, dst])
-                if code == 0:
-                    extracted_count += 1
-                    console.print(f"[dim]  ✓ {rel_path}[/dim]")
-
-            if extracted_count > 0:
-                console.print(f"\n[green]✓ Extracted {extracted_count} files[/green]")
-                self.extractions.append({
-                    "type": "app_files",
-                    "app_name": appname,
-                    "package": package,
-                    "files": extracted_count,
-                    "status": "success",
-                    "location": str(output_dir)
-                })
-                return True
-            else:
-                console.print("[red]Failed to extract files[/red]")
-                return False
-
-        except Exception as e:
-            console.print(f"[red]✗ Error: {str(e)[:100]}[/red]")
-            return False
-
-    def _check_root_safe(self) -> bool:
-        """Try to detect root, but default to True if detection fails (for Apatch compatibility)."""
-        try:
-            console.print("[cyan]🔍 Checking device root status...[/cyan]")
-
-            # Quick attempt at detection
-            stdout, _, code = self.adb._run_cmd(["shell", "su", "-c", "echo", "rooted"], timeout=5)
-            if code == 0 and "rooted" in stdout:
-                console.print("[green]✓ Device is ROOTED[/green]")
-                return True
-
-            # Try file check (shorter timeout)
-            stdout, _, code = self.adb._run_cmd(["shell", "ls", "/system/xbin/su"], timeout=3)
-            if code == 0:
-                console.print("[green]✓ Device is ROOTED (su binary found)[/green]")
-                return True
-
-        except Exception as e:
-            console.print(f"[dim]Root detection skipped: {str(e)[:50]}[/dim]")
-
-        # If detection fails/times out, assume rooted
-        # (Apatch root might not respond to standard detection)
-        console.print("[green]✓ Assuming ROOTED (Apatch compatibility mode)[/green]")
-        return True
+            status, evidence = self._svc._root_status_word_with_evidence()
+            self.root_evidence = evidence
+        except Exception as exc:  # transport level failure → unknown
+            self.root_evidence = (f"probe error: {type(exc).__name__}",)
+            status = "unknown"
+        return status
+
+    @property
+    def is_rooted(self) -> bool:
+        """Legacy boolean consumer; True ONLY for confirmed root (R-05)."""
+        return getattr(self, "root_status", "") == "rooted"
 
     def _show_root_status(self):
-        """Show root status."""
-        if self.is_rooted:
-            console.print("[green]✓ Root access confirmed[/green]")
+        """Tri-state honest wording (legacy two-state words upgraded)."""
+        if self.root_status == "rooted":
+            console.print("[green]\u2713 Root access confirmed (verified probe)[/green]")
+        elif self.root_status == "not-rooted":
+            console.print("[yellow]\u25cf No root access available to ADB (verified probe)[/yellow]")
         else:
-            console.print("[yellow]⚠ No root access detected[/yellow]")
+            console.print("[yellow]\u25cf Root status unknown (detection failed or refused; "
+                          "no claim made either way)[/yellow]")
+        return self.root_status
+
+    # -- case lifecycle ------------------------------------------------------ #
 
     def create_case(self, case_name: str = None) -> bool:
-        """Create new forensics case."""
+        """Create new forensics case (engine-backed, manifest.json)."""
         try:
             if not case_name:
                 case_name = f"case_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-
-            case_path = self.case_dir / case_name
-            case_path.mkdir(exist_ok=True)
-
-            # Get device info
-            device_info = self.adb.get_device_info()
-
-            metadata = {
-                "case_name": case_name,
-                "created": datetime.now().isoformat(),
-                "device": device_info.get("model", "Unknown"),
-                "android_version": device_info.get("android_version", "Unknown"),
-                "is_rooted": self.is_rooted,
-                "status": "open"
-            }
-
-            with open(case_path / "metadata.json", 'w') as f:
-                json.dump(metadata, f, indent=2)
-
-            self.current_case = case_name
-            console.print(f"[green]✓ Case created: {case_name}[/green]\n")
+            info = {}
+            try:
+                info = self.adb.get_device_info() or {}
+            except Exception:
+                info = {}
+            self.manifest = self._svc.create_case(
+                device_serial=getattr(self.adb, "device", None),
+                case_name=case_name,
+                device_model=info.get("model") or None,
+                android_version=info.get("android_version") or None,
+            )
+            self.current_case = self.manifest.case_id
+            console.print(f"[green]\u2713 Case created: {self.manifest.case_id}[/green]\n")
             return True
         except Exception as e:
-            console.print(f"[red]✗ Error creating case: {e}[/red]")
+            console.print(f"[red]\u2717 Error creating case: {e}[/red]")
             return False
 
-    def extract_call_logs(self) -> bool:
-        """Extract call history."""
-        try:
-            console.print("[cyan]☎️  Extracting call logs...[/cyan]")
-
-            if self.is_rooted:
-                # Extract all .db files from contacts databases directory
-                if self._extract_all_dbs_from_dir(
-                    "/data/data/com.android.providers.contacts/databases/",
-                    "call_logs"
-                ):
-                    console.print(f"[green]✓ Call logs extracted successfully[/green]")
-                    self.extractions.append({
-                        "type": "call_logs",
-                        "status": "success",
-                        "location": "/data/data/com.android.providers.contacts/databases/"
-                    })
-                    return True
-                else:
-                    console.print(f"[yellow]⚠ Could not extract call logs[/yellow]")
-                    return False
-            else:
-                # Non-rooted: use dumpsys
-                console.print("[dim]Running non-rooted extraction...[/dim]")
-                stdout, stderr, code = self.adb._run_cmd(["shell", "dumpsys", "telephony.registry"])
-
-                if code == 0:
-                    output_file = self._get_output_path("call_logs.txt")
-                    with open(output_file, 'w') as f:
-                        f.write(stdout)
-
-                    console.print(f"[green]✓ Extracted call logs (limited)[/green]")
-                    self.extractions.append({
-                        "type": "call_logs",
-                        "status": "success",
-                        "file": str(output_file)
-                    })
-                    return True
-        except Exception as e:
-            console.print(f"[red]✗ Error: {e}[/red]")
-
-        return False
-
-    def extract_contacts(self) -> bool:
-        """Extract contacts."""
-        try:
-            console.print("[cyan]📖 Extracting contacts...[/cyan]")
-
-            if self.is_rooted:
-                # Extract all .db files from contacts directory
-                if self._extract_all_dbs_from_dir(
-                    "/data/data/com.android.contacts/databases/",
-                    "contacts"
-                ):
-                    console.print(f"[green]✓ Contacts extracted successfully[/green]")
-                    self.extractions.append({
-                        "type": "contacts",
-                        "status": "success",
-                        "location": "/data/data/com.android.contacts/databases/"
-                    })
-                    return True
-                else:
-                    console.print(f"[yellow]⚠ Could not extract contacts[/yellow]")
-                    return False
-            else:
-                # Non-rooted: use content query (may be limited)
-                console.print("[dim]Running non-rooted extraction...[/dim]")
-                output_file = self._get_output_path("contacts.txt")
-                with open(output_file, 'w') as f:
-                    f.write("Contact extraction requires device root access.\n")
-                    f.write("Enable USB debugging and root to extract full contact database.\n")
-
-                console.print(f"[yellow]⚠ Contact extraction limited without root[/yellow]")
-                self.extractions.append({
-                    "type": "contacts",
-                    "status": "limited",
-                    "file": str(output_file)
-                })
-                return True
-        except Exception as e:
-            console.print(f"[red]✗ Error: {e}[/red]")
-
-        return False
-
-    def extract_messages(self) -> bool:
-        """Extract SMS messages."""
-        try:
-            console.print("[cyan]💬 Extracting messages...[/cyan]")
-
-            if self.is_rooted:
-                # Extract all .db files from telephony database directory
-                if self._extract_all_dbs_from_dir(
-                    "/data/data/com.android.providers.telephony/databases/",
-                    "messages"
-                ):
-                    console.print(f"[green]✓ Messages extracted successfully[/green]")
-                    self.extractions.append({
-                        "type": "messages",
-                        "status": "success",
-                        "location": "/data/data/com.android.providers.telephony/databases/"
-                    })
-                    return True
-                else:
-                    console.print(f"[yellow]⚠ Could not extract messages[/yellow]")
-                    return False
-            else:
-                # Non-rooted: show limitation
-                console.print("[dim]Running non-rooted extraction...[/dim]")
-                output_file = self._get_output_path("messages.txt")
-                with open(output_file, 'w') as f:
-                    f.write("Message extraction requires device root access.\n")
-                    f.write("Enable USB debugging and root to extract SMS/MMS database.\n")
-
-                console.print(f"[yellow]⚠ Message extraction limited without root[/yellow]")
-                self.extractions.append({
-                    "type": "messages",
-                    "status": "limited",
-                    "file": str(output_file)
-                })
-                return True
-        except Exception as e:
-            console.print(f"[red]✗ Error: {e}[/red]")
-
-        return False
-
-    def extract_browser_history(self) -> bool:
-        """Extract browser history."""
-        try:
-            console.print("[cyan]🌐 Extracting browser history...[/cyan]")
-
-            if self.is_rooted:
-                # Try multiple browser database directories
-                browser_dirs = [
-                    "/data/data/com.android.chrome/app_chrome/Default/",
-                    "/data/data/com.google.android.webview/",
-                    "/data/data/com.android.browser/databases/"
-                ]
-
-                for browser_dir in browser_dirs:
-                    if self._extract_all_dbs_from_dir(browser_dir, "browser_history"):
-                        console.print(f"[green]✓ Browser history extracted successfully[/green]")
-                        self.extractions.append({
-                            "type": "browser_history",
-                            "status": "success",
-                            "location": browser_dir
-                        })
-                        return True
-
-                console.print(f"[yellow]⚠ Could not extract browser history[/yellow]")
+    def _require_case(self) -> bool:
+        if self.manifest is None:
+            if not self.create_case():
+                console.print("[red]\u2717 No active case — operation not started[/red]")
                 return False
-            else:
-                # Non-rooted: browser data inaccessible
-                console.print("[dim]Running non-rooted extraction...[/dim]")
-                output_file = self._get_output_path("browser_history.txt")
-                with open(output_file, 'w') as f:
-                    f.write("Browser history extraction requires device root access.\n")
-                    f.write("Chrome and other browsers store data in /data/data which requires root.\n")
-
-                console.print(f"[yellow]⚠ Browser history extraction limited without root[/yellow]")
-                self.extractions.append({
-                    "type": "browser_history",
-                    "status": "limited",
-                    "file": str(output_file)
-                })
-                return True
-        except Exception as e:
-            console.print(f"[red]✗ Error: {e}[/red]")
-
-        return False
-
-    def extract_system_logs(self) -> bool:
-        """Extract system logs (logcat) - handle encoding issues."""
-        try:
-            console.print("[cyan]📋 Extracting system logs...[/cyan]")
-
-            # logcat is a shell command, must use "shell" prefix
-            # Use timeout to prevent hanging on large outputs
-            stdout, stderr, code = self.adb._run_cmd(["shell", "logcat", "-d"], timeout=10)
-
-            if code == 0 and stdout:
-                output_file = self._get_output_path("system_logs.txt")
-
-                # Handle encoding issues - decode with errors='replace' or 'ignore'
-                try:
-                    # Try to write as UTF-8
-                    with open(output_file, 'w', encoding='utf-8') as f:
-                        f.write(stdout)
-                except UnicodeEncodeError:
-                    # If UTF-8 fails, write with error replacement
-                    with open(output_file, 'w', encoding='utf-8', errors='replace') as f:
-                        f.write(stdout)
-
-                log_count = stdout.count('\n')
-                console.print(f"[green]✓ Extracted {log_count} log entries[/green]")
-                self.extractions.append({
-                    "type": "system_logs",
-                    "count": log_count,
-                    "status": "success",
-                    "file": str(output_file)
-                })
-                return True
-            else:
-                console.print(f"[yellow]⚠ Could not extract logs: {stderr if stderr else 'No output'}[/yellow]")
-        except Exception as e:
-            console.print(f"[red]✗ Error: {str(e)[:100]}[/red]")
-
-        return False
-
-    def extract_installed_packages(self) -> bool:
-        """Extract list of all installed packages."""
-        try:
-            console.print("[cyan]📦 Extracting installed packages...[/cyan]")
-
-            # Get all packages
-            stdout, stderr, code = self.adb._run_cmd(["shell", "pm", "list", "packages"])
-            if code != 0:
-                console.print(f"[yellow]⚠ Could not list packages[/yellow]")
-                return False
-
-            packages = [p.replace("package:", "").strip() for p in stdout.strip().split('\n') if p.startswith('package:')]
-
-            if packages:
-                output_file = self._get_output_path("installed_packages.txt")
-
-                with open(output_file, 'w', encoding='utf-8') as f:
-                    f.write(f"Total Packages: {len(packages)}\n")
-                    f.write("=" * 50 + "\n\n")
-                    for pkg in sorted(packages):
-                        f.write(f"{pkg}\n")
-
-                console.print(f"[green]✓ Extracted {len(packages)} packages[/green]")
-                self.extractions.append({
-                    "type": "installed_packages",
-                    "count": len(packages),
-                    "status": "success",
-                    "file": str(output_file)
-                })
-                return True
-            else:
-                console.print("[yellow]⚠ No packages found[/yellow]")
-                return False
-
-        except Exception as e:
-            console.print(f"[red]✗ Error: {str(e)[:100]}[/red]")
-            return False
-
-    def extract_running_processes(self) -> bool:
-        """Extract list of running processes."""
-        try:
-            console.print("[cyan]⚡ Extracting running processes...[/cyan]")
-
-            # Get running processes
-            stdout, stderr, code = self.adb._run_cmd(["shell", "ps", "-A"])
-            if code != 0:
-                console.print(f"[yellow]⚠ Could not list processes[/yellow]")
-                return False
-
-            lines = stdout.strip().split('\n')
-            process_count = len([l for l in lines if l.strip()]) - 1  # -1 for header
-
-            if process_count > 0:
-                output_file = self._get_output_path("running_processes.txt")
-
-                with open(output_file, 'w', encoding='utf-8', errors='replace') as f:
-                    f.write(stdout)
-
-                console.print(f"[green]✓ Extracted {process_count} running processes[/green]")
-                self.extractions.append({
-                    "type": "running_processes",
-                    "count": process_count,
-                    "status": "success",
-                    "file": str(output_file)
-                })
-                return True
-            else:
-                console.print("[yellow]⚠ No processes found[/yellow]")
-                return False
-
-        except Exception as e:
-            console.print(f"[red]✗ Error: {str(e)[:100]}[/red]")
-            return False
-
-    def extract_wifi_networks(self) -> bool:
-        """Extract WiFi networks saved on device."""
-        try:
-            console.print("[cyan]🌐 Extracting WiFi networks...[/cyan]")
-
-            # WiFi config is typically in /data/misc/wifi/wpa_supplicant.conf
-            wifi_conf = "/data/misc/wifi/wpa_supplicant.conf"
-
-            # Try to pull WiFi config
-            stdout, stderr, code = self.adb._run_cmd(["shell", "su", "-c", f"cat {wifi_conf}"])
-            if code == 0 and stdout:
-                output_file = self._get_output_path("wifi_networks.txt")
-
-                with open(output_file, 'w', encoding='utf-8', errors='replace') as f:
-                    f.write(stdout)
-
-                # Count networks
-                network_count = stdout.count("network={")
-                console.print(f"[green]✓ Extracted {network_count} WiFi networks[/green]")
-                self.extractions.append({
-                    "type": "wifi_networks",
-                    "count": network_count,
-                    "status": "success",
-                    "file": str(output_file)
-                })
-                return True
-            else:
-                console.print("[yellow]⚠ WiFi networks not accessible (requires root)[/yellow]")
-                return False
-
-        except Exception as e:
-            console.print(f"[red]✗ Error: {str(e)[:100]}[/red]")
-            return False
-
-    def generate_report(self) -> bool:
-        """Generate comprehensive forensics report with device info."""
-        try:
-            console.print("[cyan]📝 Generating forensics report...[/cyan]")
-
-            report_file = self._get_output_path("forensics_report.json")
-            device_info = self.adb.get_device_info()
-
-            # Collect additional system info if rooted
-            additional_info = {}
-            if self.is_rooted:
-                # Get installed packages count
-                stdout, stderr, code = self.adb._run_cmd(["shell", "pm", "list", "packages"])
-                if code == 0:
-                    packages = [p.strip() for p in stdout.strip().split('\n') if p.strip().startswith('package:')]
-                    additional_info["installed_packages"] = len(packages)
-
-                # Get running processes
-                stdout, stderr, code = self.adb._run_cmd(["shell", "ps", "-A"])
-                if code == 0:
-                    processes = len([p for p in stdout.strip().split('\n') if p.strip()])
-                    additional_info["running_processes"] = processes
-
-                # Get SELinux status
-                stdout, stderr, code = self.adb._run_cmd(["shell", "getenforce"])
-                if code == 0:
-                    additional_info["selinux_status"] = stdout.strip()
-
-            report = {
-                "case_name": self.current_case,
-                "generated": datetime.now().isoformat(),
-                "device": {
-                    "model": device_info.get("model", "Unknown"),
-                    "manufacturer": device_info.get("manufacturer", "Unknown"),
-                    "brand": device_info.get("brand", "Unknown"),
-                    "android_version": device_info.get("android_version", "Unknown"),
-                    "api_level": device_info.get("api_level", "Unknown"),
-                    "build_id": device_info.get("build_id", "Unknown"),
-                    "kernel_version": device_info.get("kernel_version", "Unknown"),
-                    "security_patch": device_info.get("security_patch", "Unknown")
-                },
-                "device_rooted": self.is_rooted,
-                "root_method": "Apatch/Magisk/SuperUser",
-                "system_info": additional_info,
-                "extractions": self.extractions,
-                "summary": {
-                    "total_operations": len(self.extractions),
-                    "successful": len([e for e in self.extractions if e.get("status") == "success"]),
-                    "database_files": sum([e.get("files", 0) for e in self.extractions if e.get("type") == "all_databases"])
-                }
-            }
-
-            with open(report_file, 'w') as f:
-                json.dump(report, f, indent=2)
-
-            console.print(f"[green]✓ Report generated: {report_file}[/green]")
-            return True
-        except Exception as e:
-            console.print(f"[red]✗ Error generating report: {e}[/red]")
-            return False
+        return True
 
     def _get_output_path(self, filename: str) -> str:
-        """Get output path for forensics data."""
-        if not self.current_case:
+        """Output path of the current case (legacy shape)."""
+        if not self.current_case or self.manifest is None:
             self.create_case()
+        return str(self.case_dir / self.current_case / filename)
 
-        case_path = self.case_dir / self.current_case
-        return str(case_path / filename)
+    # -- app extraction (1/2/3) --------------------------------------------- #
 
-    def _parse_call_logs(self, db_path: str) -> List[Dict]:
-        """Parse call logs from database."""
-        calls = []
+    def extract_app_databases(self) -> bool:
+        """Extract databases from user-selected app."""
+        package, appname = self._select_app("App Databases")
+        if not package:
+            return False
+        return self._extract_and_record(package, appname, "databases",
+                                        "app_databases", "Device_database")
+
+    def extract_app_shared_prefs(self) -> bool:
+        """Extract shared prefs from user-selected app."""
+        package, appname = self._select_app("App Shared Prefs")
+        if not package:
+            return False
+        return self._extract_and_record(package, appname, "shared_prefs",
+                                        "app_shared_prefs", "Device_shared_prefs")
+
+    def extract_app_files(self) -> bool:
+        """Extract files folder from user-selected app."""
+        package, appname = self._select_app("App Files")
+        if not package:
+            return False
+        return self._extract_and_record(package, appname, "files",
+                                        "app_files", "Device_files")
+
+    def _extract_and_record(self, package: str, appname: str, source: str,
+                            legacy_type: str, legacy_root_key: str) -> bool:
+        """Engine-backed byte-safe extraction of one app's folder (R-07).
+
+        Honest console summary: counts copied files, records failure
+        notes verbatim — failed or 0-file extractions are never reported
+        as success."""
+        if not self._require_case():
+            return False
+        console.print(f"[cyan]\u2192 Extracting {source} for {appname} "
+                      f"({package})[/cyan]\n")
+        before = len(self.manifest.files)
         try:
-            conn = sqlite3.connect(db_path)
-            cursor = conn.cursor()
-            cursor.execute("SELECT number, date, duration FROM calls LIMIT 100")
+            self.manifest = self._svc.extract_app_data_files(
+                package, (source,), self.manifest)
+        except Exception as exc:
+            console.print(f"[red]\u2717 Error: {str(exc)[:100]}[/red]")
+            return False
+        records = [f for f in self.manifest.files[before:] if f.kind == "binary"]
+        notes = [e for key, e in self.manifest.extractions
+                 if key.startswith(f"extract:{source}:{package}")]
+        for note in notes:
+            console.print(f"[dim]  {note}[/dim]")
+        copied = len(set(f.case_relative_path for f in records))
+        self._note_extraction(legacy_type, package, appname, copied)
+        if copied > 0:
+            console.print(f"\n[green]\u2713 Extracted {copied} files "
+                          f"(sha256 recorded in manifest)[/green]")
+            return True
+        console.print(f"[red]\u2717 Failed to extract any files[/red]")
+        return False
 
-            for row in cursor.fetchall():
-                calls.append({
-                    "number": row[0],
-                    "date": row[1],
-                    "duration": row[2]
-                })
-            conn.close()
-        except:
-            pass
-        return calls
+    # -- one-shot extracts (4/5/6) -------------------------------------------- #
 
-    def _parse_contacts(self, db_path: str) -> List[Dict]:
-        """Parse contacts from database."""
-        contacts = []
+    def extract_system_logs(self) -> bool:
+        """Extract system logs (logcat) — engine documented text transform."""
+        if not self._require_case():
+            return False
+        before = len(self.manifest.extractions)
+        self.manifest = self._svc.extract_system_logs(self.manifest)
+        return self._finish_text_op("system_logs", "system logs", before,
+                                    "system_logs.txt")
+
+    def extract_installed_packages(self) -> bool:
+        if not self._require_case():
+            return False
+        before = len(self.manifest.extractions)
+        self.manifest = self._svc.extract_installed_packages(self.manifest)
+        return self._finish_text_op("installed_packages", "package list",
+                                    before, "installed_packages.txt")
+
+    def extract_running_processes(self) -> bool:
+        if not self._require_case():
+            return False
+        before = len(self.manifest.extractions)
+        self.manifest = self._svc.extract_running_processes(self.manifest)
+        return self._finish_text_op("running_processes", "process list",
+                                    before, "running_processes.txt")
+
+    def _finish_text_op(self, op: str, label: str,
+                        before: int, filename: str) -> bool:
+        notes = [state for key, state in self.manifest.extractions[before:]
+                 if key == op]
+        state = notes[-1] if notes else "no result recorded"
+        if state.startswith("success"):
+            console.print(f"[green]\u2713 Extracted {label}[/green]")
+            self._note_extraction(op, "", label, 0)
+            return True
+        console.print(f"[yellow]\u2717 Could not extract {label}: {state}[/yellow]")
+        return False
+
+    # -- WiFi (7, R-12 redaction default) ------------------------------------- #
+
+    def extract_wifi_networks(self) -> bool:
+        """Extract WiFi networks — REDACTED by default (R-12).
+
+        Documented Stage 08 behavior change (the fix itself): the legacy
+        cleartext-by-default write is gone; psk/password values are
+        withheld in the stored file. The explicit cleartext-with-
+        double-confirm flow belongs to the TUI forensics cockpit."""
+        if not self._require_case():
+            return False
+        before = len(self.manifest.extractions)
+        self.manifest = self._svc.extract_wifi_networks(self.manifest)
+        notes = [state for key, state in self.manifest.extractions[before:]
+                 if key == "wifi_networks"]
+        state = notes[-1] if notes else "no result recorded"
+        if "networks count" in state and "unavailable" not in state:
+            console.print(f"[green]\u2713 WiFi networks extracted "
+                          f"(REDACTED default — psk/password withheld, R-12)[/green]")
+            console.print("[dim]  Cleartext PSK storage is only available "
+                          "in the TUI cockpit behind a double confirmation.[/dim]")
+            self._note_extraction("wifi_networks", "", "WiFi networks", 0)
+            return True
+        console.print(f"[yellow]\u2717 Could not extract WiFi networks: {state}[/yellow]")
+        return False
+
+    # -- report (8) ------------------------------------------------------------ #
+
+    def generate_report(self) -> bool:
+        """Forensics case report (legacy metadata fields + honest
+        tri-state root + per-file hashes)."""
+        if not self._require_case():
+            return False
         try:
-            conn = sqlite3.connect(db_path)
-            cursor = conn.cursor()
-            # Try to get contacts (structure varies by Android version)
-            cursor.execute("SELECT display_name FROM contacts LIMIT 100")
+            report_path = self._svc.generate_report(self.manifest)
+        except Exception as e:
+            console.print(f"[red]\u2717 Error generating report: {e}[/red]")
+            return False
+        console.print(f"[green]\u2713 Report generated: {report_path}[/green]")
+        console.print(Panel(
+            f"Case: {self.current_case}\n"
+            f"Root status: {self.manifest.root_status}\n"
+            f"Files: {len(self.manifest.files)} (sha256 recorded)\n"
+            f"Redaction preset: {self.manifest.redaction_preset}",
+            title="case report",
+        ))
+        return True
 
-            for row in cursor.fetchall():
-                contacts.append({"name": row[0]})
-            conn.close()
-        except:
-            pass
-        return contacts
+    # -- internals --------------------------------------------------------------- #
 
-    def _parse_messages(self, db_path: str) -> List[Dict]:
-        """Parse messages from database."""
-        messages = []
+    def _note_extraction(self, legacy_type: str, package: str, label: str,
+                         count: int) -> None:
+        self.extractions.append({
+            "type": legacy_type,
+            "package": package,
+            "label": label,
+            "files": count,
+            "status": "recorded",
+            "location": self._get_output_path(""),
+        })
+
+    def _select_app(self, label: str) -> Tuple[Optional[str], Optional[str]]:
+        """Legacy interactive app selection (system/third-party + list)."""
         try:
-            conn = sqlite3.connect(db_path)
-            cursor = conn.cursor()
-            cursor.execute("SELECT address, body, date FROM sms LIMIT 100")
+            console.print(f"[bold cyan]\u2192 Extract {label}[/bold cyan]\n")
+            console.print("  [1] System Apps")
+            console.print("  [2] Third-Party Apps\n")
+            choice = console.input("Select app category (1-2): ").strip()
+            if choice != "1" and choice != "2":
+                console.print("[red]Invalid choice[/red]")
+                return None, None
+            lines = self._pm_list(choice == "1")
+            apps = []
+            for line in lines:
+                pkg = line.removeprefix("package:").strip()
+                if pkg:
+                    apps.append((pkg, pkg))
+            if not apps:
+                console.print("[yellow]\u25cf No apps found[/yellow]")
+                return None, None
+            for i, (pkg, name) in enumerate(apps[:25], start=1):
+                console.print(f"  [{i}] {name}  ({pkg})")
+            if len(apps) > 25:
+                console.print(f"  ... and {len(apps) - 25} more")
+            pick = console.input("Select app number: ").strip()
+            if not pick.isdigit() or not (1 <= int(pick) <= min(25, len(apps))):
+                console.print("[red]Invalid selection[/red]")
+                return None, None
+            pkg, name = apps[int(pick) - 1]
+            return pkg, name
+        except Exception as exc:
+            console.print(f"[red]\u2717 Error: {str(exc)[:100]}[/red]")
+            return None, None
 
-            for row in cursor.fetchall():
-                messages.append({
-                    "number": row[0],
-                    "body": row[1],
-                    "date": row[2]
-                })
-            conn.close()
-        except:
-            pass
-        return messages
-
-    def _parse_browser_history(self, db_path: str) -> List[Dict]:
-        """Parse browser history from database."""
-        history = []
+    def _pm_list(self, system: bool) -> List[str]:
         try:
-            conn = sqlite3.connect(db_path)
-            cursor = conn.cursor()
-            cursor.execute("SELECT url, title FROM urls LIMIT 100")
-
-            for row in cursor.fetchall():
-                history.append({
-                    "url": row[0],
-                    "title": row[1]
-                })
-            conn.close()
-        except:
-            pass
-        return history
+            stdout, _, code = self.adb._run_cmd(
+                ["shell", "pm", "list", "packages", "-s" if system else "-3"])
+        except Exception:
+            stdout, code = "", 1
+        if code != 0 or not stdout:
+            return []
+        return [line for line in stdout.splitlines() if line.strip()]
 
 
 def show_forensics_menu(adb_interface):
-    """Show digital forensics menu - expanded version."""
+    """Show digital forensics menu (legacy 8-op structure preserved)."""
     forensics = DeviceForensics(adb_interface)
 
-    # Create case
+    # Create case (legacy auto-create on menu entry)
     forensics.create_case()
 
     while True:
-        # Show menu
-        root_status = "[green]ROOTED ✓[/green]" if forensics.is_rooted else "[yellow]NOT ROOTED[/yellow]"
+        if forensics.root_status == "rooted":
+            root_status = "[green]ROOTED \u2713[/green]"
+        elif forensics.root_status == "not-rooted":
+            root_status = "[yellow]NOT ROOTED (verified)[/yellow]"
+        else:
+            root_status = "[yellow]ROOT STATUS UNKNOWN[/yellow]"
 
-        console.print(f"\n[bold cyan]🔍 DIGITAL FORENSICS - {root_status}[/bold cyan]\n")
+        console.print(f"\n[bold cyan]\u2192 DIGITAL FORENSICS - {root_status}[/bold cyan]\n")
 
-        console.print("  📱 [1] Extract App Databases         - Select and extract app databases")
-        console.print("  ⚙️  [2] Extract App Shared Prefs     - Extract app configuration/settings")
-        console.print("  📁 [3] Extract App Files             - Extract app data files folder")
-        console.print("  📋 [4] Extract System Logs           - Pull logcat system logs")
-        console.print("  📦 [5] Extract Installed Packages    - List all installed apps")
-        console.print("  ⚡ [6] Extract Running Processes     - List running processes")
-        console.print("  🌐 [7] Extract WiFi Networks         - Pull WiFi networks history")
-        console.print("  📝 [8] Generate Report               - Create forensics case report")
-        console.print("  ❌ [0] Back to Main Menu             - Return\n")
+        console.print("  \u2713 [1] Extract App Databases         - Select and extract app databases")
+        console.print("  \u2713 [2] Extract App Shared Prefs     - Extract app configuration/settings")
+        console.print("  \u2713 [3] Extract App Files             - Extract app data files folder")
+        console.print("  \u2713 [4] Extract System Logs           - Pull logcat system logs")
+        console.print("  \u2713 [5] Extract Installed Packages    - List all installed apps")
+        console.print("  \u2713 [6] Extract Running Processes     - List running processes")
+        console.print("  \u2713 [7] Extract WiFi Networks         - Pull WiFi histories (REDACTED default)")
+        console.print("  \u2713 [8] Generate Report               - Create forensics case report")
+        console.print("  \u2717 [0] Back to Main Menu             - Return\n")
 
         choice = console.input("[bold cyan]Select operation (0-8): [/bold cyan]").strip()
 

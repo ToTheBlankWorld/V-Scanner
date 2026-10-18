@@ -38,12 +38,28 @@ class Sentinel:
 
 
 class AsyncJobBridge:
-    """Marshals ``JobEvent`` deliveries from worker threads to a loop."""
+    """Marshals ``JobEvent`` deliveries from worker threads to a loop.
+
+    Stage 08 consumption contract (JOB_AND_EVENT_CONTRACTS §12): the pump
+    is the ONLY upper half of the delivery pipeline, so its sink
+    containment is part of the no-lost-terminal guarantee:
+
+    * a sink that raises must NOT kill the pump — the error is recorded
+      honestly in ``last_sink_error`` and delivery continues (the
+      JobManager already contains worker-side subscriber exceptions);
+    * ``CancelledError`` is re-raised (app shutdown cancellation is
+      legitimate and must not be swallowed);
+    * after :meth:`stop`, every event already in the queue is still
+      delivered BEFORE the sentinel (bounded, ordered drain).
+    """
+
+    last_sink_error: Optional[BaseException]
 
     def __init__(self, loop: Optional[asyncio.AbstractEventLoop] = None) -> None:
         self._loop = loop
         self._queue: Optional[asyncio.Queue] = None
         self._unsubscribe: Optional[Callable[[], None]] = None
+        self.last_sink_error: Optional[BaseException] = None
 
     def attach(
         self,
@@ -102,9 +118,20 @@ class AsyncJobBridge:
             if isinstance(item, Sentinel):
                 self._queue.task_done()
                 return
-            outcome = sink(item)
-            if outcome is not None and hasattr(outcome, "__await__"):
-                await outcome  # type: ignore[misc]
+            try:
+                outcome = sink(item)
+                if outcome is not None and hasattr(outcome, "__await__"):
+                    await outcome  # type: ignore[misc]
+            except asyncio.CancelledError:
+                # App shutdown: legal cancellation, not a subscriber fault;
+                # re-raise without recording (not an error to own).
+                self._queue.task_done()
+                raise
+            except Exception as exc:  # subscriber containment (loop side)
+                self.last_sink_error = exc
+                # delivery continues: dropping the remaining queue because
+                # one sink call failed would silently lose terminal events
+                # (contract §12 forbids exactly that).
             self._queue.task_done()
 
     async def drain(self, count: int, timeout: float = 5.0) -> "list[JobEvent]":

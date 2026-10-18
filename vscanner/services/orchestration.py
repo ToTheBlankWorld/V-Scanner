@@ -46,6 +46,10 @@ __all__ = [
     "app_listing_rows_plan",
     "export_reports_plan",
     "tool_provisioning_plan",
+    "monitoring_session_plan",
+    "admin_op_plan",
+    "forensics_job_plan",
+    "demo_scan_plan",
 ]
 
 Plan = Callable[[Any], Any]  # (JobContext) -> result; untyped to avoid a cycle
@@ -146,4 +150,113 @@ def tool_provisioning_plan(
         return provisioning_service.provision_tool(
             tool, version=version, progress=handler, context=context,
         )
+    return plan
+
+
+# ---------------------------------------------------------------------------
+# Stage 08 plans (SC-5 / SC-6 / forensics / demo)
+# ---------------------------------------------------------------------------
+
+def monitoring_session_plan(
+    monitor_service: Any,
+    serial: Optional[str],
+    interval_s: float = 2.0,
+    max_consecutive_failures: int = 3,
+) -> Plan:
+    """MONITORING_SESSION (SC-6, Stage 08): poll the honest usage surface
+    each tick and emit typed snapshot payloads. The session runs until the
+    user stops it (cancel→CANCELLED, the contract's session semantic) or
+    aborts honestly after ``max_consecutive_failures`` consecutive failed
+    polls (log-noted; result carries the abort reason).
+
+    Cancellation boundary: checkpoints between polls and inside the sleep
+    slices (documented §5 contract row for MONITORING_SESSION). The loop
+    NEVER runs on the UI thread — it executes inside the job's worker
+    thread."""
+    import time as _time
+
+    def plan(context: Any) -> "dict[str, object]":
+        polls = 0
+        consecutive_failures = 0
+        while True:
+            context.cancel_token.checkpoint("between_polls")
+            try:
+                snapshot = monitor_service.read_hardware_usage_once(
+                    serial=serial)
+                context.emit_snapshot(snapshot)
+                for capability, line in snapshot.evidence:
+                    context.log("info", f"{capability} observed: {line}")
+                for failure in snapshot.failures:
+                    context.log("warn", failure)
+                consecutive_failures = 0
+                polls += 1
+            except Exception as exc:  # failed poll is recorded, not fabricated
+                consecutive_failures += 1
+                context.log(
+                    "error",
+                    f"poll failed ({type(exc).__name__}); "
+                    f"{consecutive_failures}/{max_consecutive_failures} "
+                    "consecutive failures",
+                )
+                if consecutive_failures >= max_consecutive_failures:
+                    return {
+                        "status": "aborted",
+                        "reason": (
+                            f"{consecutive_failures} consecutive failed polls"
+                        ),
+                        "polls_completed": polls,
+                    }
+            # cooperative sleep: check for cancellation each slice so a stop
+            # request never waits longer than the configured granularity
+            slices = max(1, int(max(0.0, interval_s) * 10))
+            for _ in range(slices):
+                context.cancel_token.checkpoint("monitor_sleep_slice")
+                _time.sleep(max(0.0, interval_s / 10.0))
+    return plan
+
+
+def admin_op_plan(
+    admin_service: Any,
+    op: str,
+    package: str,
+    confirmation: Any,
+) -> Plan:
+    """ADMIN_OP (SC-5, Stage 08): one-shot destructive-capable operation.
+    The service performs the confirmation gate itself (R-13 service-side),
+    so this plan adds no second gate — double-gating would double-ask."""
+    def plan(context: Any) -> "object":
+        context.log("info", f"admin operation {op} started for {package}")
+        result = getattr(admin_service, op)(package, confirmation)
+        context.log("info", f"admin operation {op} finished: {result.message}")
+        return result
+    return plan
+
+
+def forensics_job_plan(runner: Callable[[Any], Any],
+                       description: str) -> Plan:
+    """FORENSICS_OP (Stage 08): a plain closure over a forensic service
+    call; per-file progress/log emission happens INSIDE the service when
+    a ``context`` is threaded through (extract_app_data path)."""
+    def plan(context: Any) -> Any:
+        context.log("info", f"forensics op started: {description}")
+        result = runner(context)
+        if isinstance(result, tuple) and len(result) == 2:
+            manifest, report_path = result
+            context.log("info", f"forensics op finished: {description}; "
+                                f"manifest updated ({len(manifest.files)} files)")
+            return manifest
+        context.log("info", f"forensics op finished: {description}")
+        return result
+    return plan
+
+
+def demo_scan_plan(demo_service: Any) -> Plan:
+    """DEMO (SC-10): deterministic fixture bundle; no device involved."""
+    def plan(context: Any) -> Any:
+        context.log("info", "building demo dataset (no device contacted)")
+        bundle = demo_service.scan()
+        context.progress(
+            bundle.summary.total_apps, bundle.summary.total_apps,
+            unit="apps", context="demo dataset ready")
+        return bundle
     return plan

@@ -45,6 +45,8 @@ from vscanner.core.models import (
 from vscanner.services.config import ConfigService
 from vscanner.services.history import HistoryEntry
 
+from _stage08_stub import Stage08StubBackend
+
 
 # -- helpers ------------------------------------------------------------------ #
 
@@ -168,7 +170,7 @@ class ScanFakeHandle:
         pass
 
 
-class FakeScanBackend:
+class FakeScanBackend(Stage08StubBackend):
     """Scripted backend for the scan screen (same seam as Stage 06 fakes)."""
 
     def __init__(self) -> None:
@@ -404,6 +406,7 @@ class TestScanExecution:
             screen.action_start_scan()
             await _until(lambda: screen._scan_state == "running")
             job_id = screen._scan_job_id
+            assert job_id is not None
             screen.on_job_event(JobTerminalEvent(
                 job_id=job_id, outcome=JobState.FAILED,
                 error=InputValidationError("device vanished mid-scan")))
@@ -540,6 +543,7 @@ class TestCancellationAndLifecycle:
             screen.action_start_scan()
             await _until(lambda: screen._scan_state == "running")
             job_id = screen._scan_job_id
+            assert job_id is not None
             screen.on_job_event(JobFindingEvent(
                 job_id=job_id,
                 finding=_finding(severity=FindingSeverity.INFO,
@@ -572,6 +576,7 @@ class TestCancellationAndLifecycle:
             screen.action_start_scan()
             await _until(lambda: screen._scan_state == "running")
             job_id = screen._scan_job_id
+            assert job_id is not None
             screen.on_job_event(JobFindingEvent(
                 job_id=job_id, finding=_finding()))
             screen.on_job_event(JobTerminalEvent(
@@ -600,6 +605,7 @@ class TestCancellationAndLifecycle:
             screen.action_start_scan()
             await _until(lambda: screen._scan_state == "running")
             job_id = screen._scan_job_id
+            assert job_id is not None
             screen.on_job_event(JobTerminalEvent(
                 job_id=job_id, outcome=JobState.SUCCEEDED,
                 result=_bundle()))
@@ -631,9 +637,9 @@ class TestCancellationAndLifecycle:
             await pilot.pause()
             await pilot.press("f")
             await pilot.pause()
-            screen = pilot.app.screen
-            assert isinstance(screen, ScanScreen)
-            text = _visible_text(screen)
+            current = pilot.app.screen
+            assert isinstance(current, ScanScreen)
+            text = _visible_text(current)
             assert "could not be streamed here" in text
 
     async def test_active_job_survives_reconciliation(self, tmp_path) -> None:

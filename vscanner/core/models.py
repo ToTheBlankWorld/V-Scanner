@@ -38,6 +38,10 @@ __all__ = [
     "ReportFormat", "ReportMetadata", "ExportResult",
     "ToolId", "ToolState", "ToolStatusReflected",
     "RootStatus", "DeviceProfile",
+    "SensorStatus", "SensorReading", "ObservationState", "HardwareUsageSnapshot",
+    "OperationResult",
+    "FileRecord", "CaseManifest",
+    "MirrorOptions", "MirrorHandle",
     "RedactionPreset",
     "model_to_dict", "model_to_json",
     "SCHEMA_VERSION",
@@ -424,6 +428,7 @@ class ScanSummary:
     per_category_counts: Mapping[FindingCategory, int] = field(default_factory=dict)
     skipped_apps: Tuple[str, ...] = ()
     generation_ms: float = 0.0
+    demo: bool = False  # SC-10: demo fixture marker (never a real scan)
 
 
 @dataclass(frozen=True, slots=True)
@@ -553,6 +558,178 @@ class DeviceProfile:
     ip: Optional[str] = None
     mac: Optional[str] = None
     root_status: RootStatus = RootStatus.UNKNOWN
+
+
+# ---------------------------------------------------------------------------
+# §7b Stage 08: monitoring honesty (R-04), admin results (SC-5),
+# forensics (R-07/R-12) and mirroring (SC-8)
+# ---------------------------------------------------------------------------
+
+class SensorStatus(Enum):
+    """R-04 honesty enum: a sensor row is either actually observed or
+    explicitly unavailable — never invented."""
+
+    AVAILABLE = "available"
+    UNAVAILABLE = "unavailable"
+
+
+@dataclass(frozen=True, slots=True)
+class SensorReading:
+    """One honest sensor row (SC-6 / R-04).
+
+    ``AVAILABLE`` rows carry only values the device actually reported (the
+    parsed ``dumpsys sensorservice``/``sensormanager`` output — never
+    inferred, never defaulted). ``UNAVAILABLE`` rows carry ``reason`` and no
+    values; a report with zero AVAILABLE rows plus honest UNAVAILABLE
+    entries is a *complete and honest* answer, never a failure to answer.
+    """
+
+    name: str
+    status: SensorStatus = SensorStatus.UNAVAILABLE
+    values: Tuple[str, ...] = ()
+    unit: Optional[str] = None
+    reason: Optional[str] = None  # UNAVAILABLE only: documented words, no secrets
+
+
+    def __post_init__(self) -> None:
+        if self.status is SensorStatus.AVAILABLE:
+            if not self.values:
+                raise ValueError(
+                    "SensorReading AVAILABLE without observed values would be "
+                    "fabrication (R-04)")
+            if self.reason is not None:
+                raise ValueError("AVAILABLE rows carry no failure reason")
+        # sanitize guard: names/values are render-safe single-line words
+        for value in (self.name,) + self.values:
+            if "\n" in value or "\r" in value:
+                raise ValueError("SensorReading fields must be single-line")
+
+
+class ObservationState(Enum):
+    """SC-6 capability-observation states for camera/microphone/location.
+
+    These deliberately do NOT include a "confirmed not in use" state: the
+    absence of a documented marker in one poll is NOT proof of inactivity,
+    so ``NOT_OBSERVED`` means exactly "the probe ran and matched nothing"
+    (kept distinct from ``UNKNOWN`` = probe failed/unparseable).
+    """
+
+    OBSERVED_ACTIVE = "observed_active"
+    NOT_OBSERVED = "not_observed"
+    UNKNOWN = "unknown"
+
+
+@dataclass(frozen=True, slots=True)
+class HardwareUsageSnapshot:
+    """One SC-6 monitor poll of the camera/microphone/location surface.
+
+    Honesty rules (R-04): no count/percentage/number is ever invented —
+    each capability carries its :class:`ObservationState` and any matching
+    output line is stored raw in ``evidence`` for user verification. Probe
+    failures are enumerated in ``failures`` (capability names); a snapshot
+    whose every entry is UNKNOWN/NOT_OBSERVED is honest, not an error.
+    """
+
+    camera: ObservationState = ObservationState.UNKNOWN
+    microphone: ObservationState = ObservationState.UNKNOWN
+    location: ObservationState = ObservationState.UNKNOWN
+    evidence: Tuple[Tuple[str, str], ...] = ()  # (capability, matched line)
+    failures: Tuple[str, ...] = ()              # capabilities whose probe errored
+    serial: Optional[str] = None
+    captured_at: Optional[datetime] = None  # UTC-aware (set by the service)
+
+
+    def __post_init__(self) -> None:
+        if self.captured_at is not None and self.captured_at.tzinfo is None:
+            raise ValueError("captured_at must be timezone-aware UTC")
+
+
+def _utcnow_iso() -> str:
+    from datetime import datetime, timezone
+
+    return datetime.now(timezone.utc).isoformat()
+
+
+@dataclass(frozen=True, slots=True)
+class OperationResult:
+    """SC-5 result for destructive-capable one-shot admin operations.
+
+    ``ok`` mirrors the legacy boolean contract; ``adb_returncode`` and
+    ``message`` are the honest detail the legacy surface never had.
+    """
+
+    ok: bool
+    adb_returncode: int
+    message: str
+
+
+@dataclass(frozen=True, slots=True)
+class FileRecord:
+    """One extracted file inside a forensics case (R-07/R-12 contract)."""
+
+    source_path: str
+    case_relative_path: str
+    sha256: str
+    byte_count: int
+    kind: str = "binary"     # "binary" (byte-safe) | "text" (documented transform)
+    note: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class CaseManifest:
+    """Forensics case manifest (legacy ``metadata.json`` fields preserved;
+    R-05 adds the honest tri-state ``root_status`` next to ``is_rooted``,
+    R-12 records the applied ``redaction_preset``)."""
+
+    case_id: str
+    created_at: str = field(default_factory=_utcnow_iso)  # ISO-8601 UTC string
+    device_serial: Optional[str] = None
+    device_model: Optional[str] = None
+    android: Optional[str] = None
+    is_rooted: bool = False  # legacy field: True only when CONFIRMED rooted
+    root_status: str = "unknown"  # "rooted" | "not-rooted" | "unknown" (R-05)
+    redaction_preset: str = "default-redacted"
+    files: Tuple[FileRecord, ...] = ()
+    extractions: Tuple[Tuple[str, str], ...] = ()  # (operation, status word)
+    note: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class MirrorOptions:
+    """SC-8 scrcpy launch options (server-side options only; documented
+    defaults follow the legacy `-S -m 1024 --max-fps 30` shape)."""
+
+    resolution: Optional[int] = 1024
+    max_fps: Optional[int] = 30
+    turn_screen_off: bool = False
+    always_on_top: bool = False
+    confirm_screen_off: bool = False  # mandatory for turn_screen_off (SC-8)
+
+    def __post_init__(self) -> None:
+        if self.turn_screen_off and not self.confirm_screen_off:
+            raise ValueError(
+                "turn_screen_off requires confirm_screen_off (SC-8: the "
+                "screen-off change is device-mutating and must be "
+                "explicitly confirmed)")
+        if self.resolution is not None and int(self.resolution) <= 0:
+            raise ValueError("resolution must be a positive integer or None")
+        if self.max_fps is not None and int(self.max_fps) <= 0:
+            raise ValueError("max_fps must be a positive integer or None")
+
+
+@dataclass(frozen=True, slots=True)
+class MirrorHandle:
+    """Handle for one spawned scrcpy process (in-process registry)."""
+
+    pid: int
+    serial: Optional[str] = None
+    launched_at: str = field(default_factory=_utcnow_iso)
+    command: Tuple[str, ...] = ()
+    exit_code: Optional[int] = None  # None while running; set when observed
+
+    @property
+    def running(self) -> bool:
+        return self.exit_code is None
 
 
 # ---------------------------------------------------------------------------

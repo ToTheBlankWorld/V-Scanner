@@ -35,6 +35,8 @@ __all__ = [
     "ProvisioningError",
     "ToolNotValidated",
     "ExportError",
+    "ForensicsError",
+    "DeepScanUnavailable",
 ]
 
 # Optional scalar detail values; dataclasses.coerce strings on input.
@@ -186,3 +188,29 @@ class ToolNotValidated(VScannerError):
 
 class ExportError(VScannerError):
     """Report export failed (filesystem, template, or encoding)."""
+
+
+class ForensicsError(VScannerError):
+    """A forensics operation could not be completed honestly.
+
+    Used for case-store problems, unsafe extraction paths (e.g. a source
+    path that would break out of its quoting context — R-12 hardening), and
+    manifest-write failures. The operation's partial state is always recorded
+    in the case manifest ``extractions`` log; this error never implies a
+    fabricated success.
+    """
+
+    def __init__(self, message: str, details: Optional[Mapping[str, _DETAIL_VALUE]] = None,
+                 operation: str = "") -> None:
+        merged = _coerce_details(details)
+        merged["operation"] = operation
+        super().__init__(message, merged)
+
+
+class DeepScanUnavailable(VScannerError):
+    """R-06 support error: the deep-scan APK byte stream is unavailable.
+
+    Raised by the deep-scan stage when the APK cannot be fetched (missing
+    path, transport failure); the scanner translates this into an honest
+    ``UNVERIFIED_CONDITION`` finding — never a silently empty result.
+    """

@@ -84,6 +84,15 @@ def history_dir(env: Optional[Mapping[str, str]] = None) -> Path:
     return app_data_root(env) / "history"
 
 
+def cases_dir(env: Optional[Mapping[str, str]] = None) -> Path:
+    """Forensics case-store location (Stage 08 path-migration approval):
+    ``<root>/forensics_cases`` — the legacy ``cli/forensics_cases/`` default
+    moves to the A-07 app-data root so extracted device data never lands in
+    the repository worktree. No directory is created here (creation is the
+    case store's explicit job)."""
+    return app_data_root(env) / "forensics_cases"
+
+
 def ensure_dir(path: Path) -> Path:
     """Create ``path`` (and parents) if absent; returns it."""
     path.mkdir(parents=True, exist_ok=True)

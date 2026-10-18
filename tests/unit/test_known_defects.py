@@ -1,9 +1,17 @@
-"""Known-defect regression tests (Stage 02 — section F).
+"""Known-defect regression tests (Stage 02 — section F; Stage 08 updates).
 
 Each test explicitly distinguishes:
   (a) characterization — records current behavior (never asserts it is correct);
-  (b) required behavior — written as narrowly scoped ``xfail`` so the suite
-      stays green today and flips automatically when remediation lands.
+  (b) required behavior — which was originally written as narrowly scoped
+      ``xfail`` and flips when the remediation lands.
+
+Stage 08 (2026-10-18): the R-03/R-04/R-05/R-06/R-07 pairs collapsed, per
+the Stage 03 precedent, into fixed-behavior assertions in the same commit
+as the fixes. The R-04 section additionally documents the removed legacy
+fabrication fallback; R-05 covers both dishonest directions plus the
+confirmed-rooted and confirmed-not-rooted semantics; R-07 keeps the
+text-mode characterization (still the legitimate text contract) and flips
+the byte-identity requirement onto the new byte-safe path.
 
 All device access is mocked; no test blesses fabricated sensor readings,
 incorrect root status, silent extraction failure or unsafe DB rewrites.
@@ -81,19 +89,52 @@ class TestR02ShadowedAdbConfigFunctions:
 
 class TestR03MissingForensicsExtractor:
     def test_extract_all_dbs_from_dir_is_missing(self):
-        """R-03 characterization: the method four extractors call has no definition."""
+        """R-03 remediated (Stage 08): the phantom helper stays absent."""
         assert not hasattr(df.DeviceForensics, "_extract_all_dbs_from_dir")
 
-    def test_rooted_extractor_fails_silently(self, fake_adb_rooted):
-        """R-03 characterization: extract_call_logs on a rooted device reaches
-        the missing method; the broad ``except`` turns the latent
-        AttributeError into a plain ``False`` (silent feature failure)."""
-        fns = df.DeviceForensics(fake_adb_rooted)
-        assert fns.is_rooted is True
-        assert fns.extract_call_logs() is False  # documented: not a working feature
+    def test_phantom_extractors_removed(self):
+        """R-03 remediated (Stage 08): the four silent-failure extractors
+        and their dead sqlite parsers no longer exist anywhere on the
+        legacy adapter — a phantom op is unreachable by construction. The
+        legacy menu carries exactly the eight honest operations; the
+        shared-engine implementation is ``vscanner.services.forensics``.
+        (Replaces the Stage 02 characterization pair, which recorded the
+        old silent-failure behavior of a now-removed feature.)"""
+        removed_ops = ("extract_call_logs", "extract_contacts",
+                       "extract_messages", "extract_browser_history")
+        for name in removed_ops:
+            assert not hasattr(df.DeviceForensics, name), name
+        source = _module_source("digital_forensics")
+        for parser in ("_parse_call_logs", "_parse_contacts",
+                       "_parse_messages", "_parse_browser_history"):
+            assert parser not in source, parser
 
 
 class TestR04FabricatedSensorFallback:
+    """R-04 remediated (Stage 08): ``get_sensor_values_live`` delegates to
+    the engine MonitoringService (honest rows only)."""
+
+    def test_no_sensor_data_means_no_invented_rows(self, monkeypatch):
+        """Empty/failing device output yields NO rows (an honest empty
+        dict) — the legacy invented-unit fallback is gone."""
+        values = self._sensor_interface(monkeypatch).get_sensor_values_live()
+        assert values == {}
+
+    def test_reported_rows_are_device_rows(self, monkeypatch):
+        """When the device DOES report rows, exactly those rows come back
+        (values carried through, nothing baked-in)."""
+        fake = FakeAdb(responses=[
+            ("0: Accelerometer: x=1.0,y=2.0\n1: Light sensor", "", 0)])
+        monkeypatch.setattr(
+            scanner.ADBInterface, "_run_cmd",
+            lambda self, cmd, timeout=30: fake._run_cmd(cmd, timeout),
+        )
+        values = scanner.ADBInterface().get_sensor_values_live()
+        assert values == {
+            "Accelerometer": ["x=1.0", "y=2.0"],           # device-reported
+            "Light Sensor": ["Detected and available"],     # legacy Method-2
+        }                                                   # detection, kept
+
     @staticmethod
     def _sensor_interface(monkeypatch):
         fake = FakeAdb(responses=[("", "", 1)])
@@ -103,82 +144,101 @@ class TestR04FabricatedSensorFallback:
         )
         return scanner.ADBInterface()
 
-    def test_empty_dumpsys_yields_fabricated_default_sensors(self, monkeypatch):
-        """R-04 characterization: when dumpsys provides no data, the interface
-        returns hardcoded plausible-looking entries (units as values)."""
-        values = self._sensor_interface(monkeypatch).get_sensor_values_live()
-        assert values == {
-            "Accelerometer (X, Y, Z)": ["m/s²"],
-            "Magnetometer (X, Y, Z)": ["µT"],
-            "Gyroscope (X, Y, Z)": ["°/s"],
-            "Light Sensor": ["Lux"],
-            "Proximity Sensor": ["cm"],
-        }, "fabricated fallback changed — update R-04 evidence"
-
-    @pytest.mark.xfail(strict=False, reason="R-04 owned by Stage 08: SensorReading(UNAVAILABLE) model required")
-    def test_no_sensor_data_means_no_invented_rows(self, monkeypatch):
-        """R-04 required behavior: missing device data must yield no rows
-        (an honest UNAVAILABLE state), never synthetic entries."""
-        values = self._sensor_interface(monkeypatch).get_sensor_values_live()
-        assert values == {}
-
 
 class TestR05RootDefaultsToRooted:
-    def test_failed_detection_assumes_rooted(self, fake_adb_detection_fails):
-        """R-05 characterization: ``_check_root_safe`` returns True when both
-        probes fail — the optimistic default that mislabels non-root devices."""
-        fns = df.DeviceForensics(fake_adb_detection_fails)
-        assert fns.is_rooted is True  # documents current behavior
+    """R-05 remediated (Stage 08): verified tri-state probing end to end."""
 
-    @pytest.mark.xfail(strict=False, reason="R-05 owned by Stage 08: tri-state ROOTED/NOT_ROOTED/UNKNOWN required")
     def test_failed_detection_must_not_report_root(self, fake_adb_detection_fails):
-        """R-05 required behavior: UNKNOWN must be distinguishable from rooted."""
+        """UNKNOWN is distinguishable from rooted: failed detection ⇒
+        ``is_rooted`` False AND the honest tri-state word "unknown"."""
         fns = df.DeviceForensics(fake_adb_detection_fails)
         assert fns.is_rooted is not True
+        assert fns.root_status == "unknown"
+
+    def test_failed_detection_must_not_claim_not_rooted_either(self, fake_adb_detection_fails):
+        """Fully failed probes must surface UNKNOWN, never a confirmed
+        "not-rooted" claim (both dishonest directions removed)."""
+        fns = df.DeviceForensics(fake_adb_detection_fails)
+        assert fns.root_status == "unknown"
+
+    def test_confirmed_root_is_reported(self):
+        fake = FakeAdb(responses=[("uid=0(root) gid=0(root) groups=0(root)", "", 0)])
+        fns = df.DeviceForensics(fake)
+        assert fns.is_rooted is True
+        assert fns.root_status == "rooted"
+
+    def test_confirmed_not_rooted_when_detector_supports_it(self):
+        fake = FakeAdb(responses=[
+            ("", "sh: su: inaccessible or not found", 127),
+            ("", "", 1),       # command -v su → absent
+            ("", "", 0),       # pm list packages → no manager packages
+        ])
+        fns = df.DeviceForensics(fake)
+        assert fns.is_rooted is False
+        assert fns.root_status == "not-rooted"
 
 
 class TestR06SecretPatternsNeverExecuted:
-    @staticmethod
-    def _pattern_uses(module: str) -> int:
-        tree = ast.parse(_module_source(module))
-        return sum(
+    """R-06 remediated (Stage 08): the documented credential-class
+    patterns are now executed by the engine deep-scan stage
+    (``vscanner.services.scanning.deep_scan``) against host-side
+    extracted APK strings; findings carry redacted presentations only
+    (the raw matched value never enters any artifact)."""
+
+    def test_patterns_exist(self):
+        assert permissions.INSECURE_URL_PATTERNS  # the patterns exist
+
+    def test_patterns_actually_applied_in_deep_scan(self):
+        """The deep-scan consumer executes the documented bundle (AST
+        check — the legacy shim delegates; the engine stage consumes)."""
+        import vscanner.services.scanning.deep_scan as deep_scan
+
+        tree = ast.parse(Path(deep_scan.__file__).read_text(encoding="utf-8"))
+        uses = sum(
             1 for node in ast.walk(tree)
             if isinstance(node, ast.Name) and node.id == "INSECURE_URL_PATTERNS"
             and isinstance(node.ctx, ast.Load)
         )
+        assert uses > 0
 
-    def test_credential_patterns_present_but_unwired(self):
-        """R-06 characterization: permissions.py defines credential regexes;
-        scanner.py imports the list but has zero runtime name usages."""
-        assert permissions.INSECURE_URL_PATTERNS  # the patterns exist
-        # Import-sites are ast.alias nodes, not ast.Name — count Name loads only.
-        assert self._pattern_uses("scanner") == 0
+    def test_synthetic_credential_is_detected_and_redacted(self):
+        """Positive/negative behavioral pair: a synthetic secret is
+        detected; ordinary non-secret text yields nothing; and the
+        matched value never lands in the returned presentation."""
+        from vscanner.services.scanning.deep_scan import find_credential_matches
 
-    @pytest.mark.xfail(strict=False, reason="R-06 owned by Stage 08: host-side APK string extraction wiring")
-    def test_credential_patterns_are_actually_applied(self):
-        """R-06 required behavior: at least one consumer executes the patterns."""
-        assert self._pattern_uses("scanner") > 0
+        text = (
+            'config = "plain words without credentials"\n'
+            'password="CorrectHorseBatteryStaple-Alpha"\n'
+        )
+        hits = find_credential_matches(text)
+        assert any(h.pattern_name == "password" for h in hits)
+        for hit in hits:
+            assert "CorrectHorseBatteryStaple" not in hit.snippet
+            assert hit.value_len == len("CorrectHorseBatteryStaple-Alpha")
+        assert not find_credential_matches("no secrets here; just text")
 
 
 class TestR07TextModeDatabaseRewrite:
     def test_binary_stream_decoded_as_text_corrupts_bytes(self):
-        """R-07 characterization: the forensics DB path feeds binary bytes
-        through text decoding (``_run_cmd`` uses errors='replace') and then
-        re-encodes with the same lenient setting. A real subprocess emitting
-        non-UTF-8 bytes shows the mechanism end-to-end."""
+        """Characterization of the TEXT-mode contract (kept honest):
+        ``_run_cmd`` legitimately returns text with errors='replace' — the
+        extractor no longer uses it for binary payloads."""
         raw = b"SQLite\x00\x89PNG\xff\xfe binary"
         ai = scanner.ADBInterface(adb_path=sys.executable)
         stdout, _, code = ai._run_cmd(["-c", BIN_SCRIPT])
         assert code == 0
-        written = stdout.encode("utf-8", errors="replace")  # extractor's write transform
+        written = stdout.encode("utf-8", errors="replace")  # old extractor's transform
         assert written != raw, "round-trip unexpectedly lossless — R-07 evidence needs update"
         assert b"\xef\xbf\xbd" in written  # U+FFFD replacements baked into the "database"
 
-    @pytest.mark.xfail(strict=False, reason="R-07 owned by Stage 08: byte-safe ADB client mode required (exec-out)")
     def test_requirement_byte_safe_binary_extraction(self):
-        """R-07 required behavior: binary payloads survive the scan/extraction
-        path byte-identically. Flips at Stage 08 (exec-out/pull + hashes)."""
+        """R-07 remediated (Stage 08): the byte-safe path
+        (``_run_cmd_bytes`` / engine ``run_bytes`` adapter, exec-out
+        semantics) preserves payloads byte-identically. The database
+        extraction path now uses this (with sha256 verification records),
+        not the text mode above."""
         raw = b"SQLite\x00\x89PNG\xff\xfe binary"
         ai = scanner.ADBInterface(adb_path=sys.executable)
-        stdout, _, _ = ai._run_cmd(["-c", BIN_SCRIPT])
-        assert stdout.encode("utf-8", errors="replace") == raw
+        data = ai.run_bytes(["-c", BIN_SCRIPT])
+        assert data == raw

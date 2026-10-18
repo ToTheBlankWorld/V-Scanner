@@ -186,12 +186,19 @@ class TestImportGraph:
 
     def test_source_volume_stays_lean(self):
         """AST-lean budget: the whole engine stays comfortably under the size
-        the legacy single-file UI occupied (guard against silent bloat)."""
+        the legacy single-file UI occupied (guard against silent bloat).
+
+        Stage 08 (2026-10-18): the budget moves 6000 → 10500 for the
+        documented Stage 08 services (SC-5/SC-6/SC-8/SC-10, forensics port,
+        R-05 root probe, R-06 deep scan) — each sized to its contract with
+        no copied legacy bloat (see STAGE_08_IMPLEMENTATION_REPORT.md,
+        volume table). The guard itself stays: silent bloat beyond the
+        new budget still fails."""
         total_lines = sum(
             len(_module_path(name).read_text(encoding="utf-8").splitlines())
             for name in _iter_vscanner_sources()
         )
-        assert total_lines < 6000, f"engine grew to {total_lines} lines"
+        assert total_lines < 10500, f"engine grew to {total_lines} lines"
 
 
 class TestUiSubprocessGuard:

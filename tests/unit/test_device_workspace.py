@@ -29,6 +29,8 @@ from ui_terminal.app import VScannerApp
 from ui_terminal.screens.workspace import PAGE_SIZE, DeviceWorkspaceScreen
 from vscanner.core.errors import AdbCommandError, AdbNotAvailable
 from vscanner.core.events import JobState, JobTerminalEvent, JobStartedEvent
+
+from _stage08_stub import Stage08StubBackend
 from vscanner.core.models import (
     AppInfo, AppLabelSource, ConnectionInfo, DeviceProfile, DeviceState,
 )
@@ -92,7 +94,7 @@ class FakeHandle:
         pass
 
 
-class FakeBackend:
+class FakeBackend(Stage08StubBackend):
     """Scripted DeviceBackend for one-screen state tests (no threads beyond
     the app's own worker plumbing; no subprocess, no ADB)."""
 
@@ -597,7 +599,13 @@ class TestSelectionAndDetailsFlow:
                 str(cell) for row in range(details.row_count)
                 for cell in details.get_row_at(row)
             ]
-            assert "not rooted (verified probe)" in " ".join(values)
+            assert (
+                "not rooted (verified probe; ADB-shell context)"
+                in " ".join(values)
+            )
+            # Stage 08 re-worded the tri-state: the NOT-ROOTED display now
+            # carries the ADB-shell-context caveat from R-05 (the probe
+            # answers for the ADB-shell context, not for every app).
 
 
 class TestInventoryUi:

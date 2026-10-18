@@ -17,6 +17,7 @@ from textual.widgets import DataTable, Input, Label
 
 from ui_terminal.app import VScannerApp
 from ui_terminal.screens.reports import ReportsScreen
+from vscanner.core.errors import InputValidationError
 from vscanner.core.events import JobState, JobTerminalEvent
 from vscanner.services.config import ConfigService
 from vscanner.services.history import HistoryEntry
@@ -219,6 +220,7 @@ class TestExportExecution:
             await pilot.press("x")
             await pilot.pause()
             job_id = screen._export_job_id
+            assert job_id is not None
             result = SimpleNamespace(
                 ok=False, formats_written={}, error="disk full")
             screen.on_job_event(JobTerminalEvent(
@@ -239,7 +241,8 @@ class TestExportExecution:
             await pilot.press("x")
             await pilot.pause()
             job_id = screen._export_job_id
-            error = SimpleNamespace(message="export plan refused the path")
+            assert job_id is not None
+            error = InputValidationError("export plan refused the path")
             screen.on_job_event(JobTerminalEvent(
                 job_id=job_id, outcome=JobState.FAILED, result=None,
                 error=error))

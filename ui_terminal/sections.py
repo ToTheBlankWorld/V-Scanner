@@ -1,18 +1,12 @@
-"""Navigation registry for the V-Scanner TUI (Stage 05).
+"""Navigation registry for the V-Scanner TUI.
 
 One table drives the whole navigation surface: the sidebar rail, the app
 keyboard bindings, the command-palette entries, the help screen and the
 keymap document all render from :data:`SECTION_REGISTRY` (checked by tests),
 so shortcut text can never drift from actual behavior.
 
-Two section kinds exist:
-
-* ``kind="live"`` — implemented screens (dashboard, devices, doctor,
-  settings, help).
-* ``kind="future"`` — later-stage workflows rendered by
-  :class:`ui_terminal.screens.placeholder.PlaceholderFutureScreen` with an
-  honest "not implemented yet — owned by Stage XX" banner. They never
-  pretend to execute scans or device operations.
+Sections are all ``kind="live"`` as of Stage 08; ``future_sections()``
+returns nothing today but stays part of the API for later stages.
 """
 
 from __future__ import annotations
@@ -103,6 +97,30 @@ def _reports() -> Screen:
     return ReportsScreen()
 
 
+def _monitoring() -> Screen:
+    from ui_terminal.screens.monitoring import LiveMonitoringScreen
+
+    return LiveMonitoringScreen()
+
+
+def _forensics() -> Screen:
+    from ui_terminal.screens.forensics import ForensicsScreen
+
+    return ForensicsScreen()
+
+
+def _mirroring() -> Screen:
+    from ui_terminal.screens.mirroring import MirroringScreen
+
+    return MirroringScreen()
+
+
+def _demo() -> Screen:
+    from ui_terminal.screens.demo import DemoScreen
+
+    return DemoScreen()
+
+
 def _future(section_id: str, title: str, stage: str) -> Section:
     """A later-stage destination rendered as an honest placeholder screen."""
     from ui_terminal.screens.placeholder import PlaceholderFutureScreen, SectionRef
@@ -120,10 +138,11 @@ SECTION_REGISTRY: tuple[Section, ...] = (
     Section("devices", "Device workspace", "w", "live", "", _devices),
     Section("scan", "Scanning & findings", "f", "live", "", _scan),
     Section("reports", "Reports & history", "h", "live", "", _reports),
+    Section("monitoring", "Live monitoring", "m", "live", "", _monitoring),
+    Section("forensics", "Forensics", "o", "live", "", _forensics),
+    Section("mirroring", "Mirroring", "i", "live", "", _mirroring),
+    Section("demo", "Demo data", "b", "live", "", _demo),
     Section("doctor", "Doctor", "e", "live", "", _doctor),
     Section("settings", "Settings", "s", "live", "", _settings),
     Section("help", "Help & keys", "f1", "live", "", _help),
-    _future("monitoring", "Live monitoring", "08"),
-    _future("forensics", "Forensics", "08"),
-    _future("mirroring", "Mirroring & demo", "08"),
 )

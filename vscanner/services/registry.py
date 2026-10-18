@@ -28,7 +28,6 @@ from vscanner.services.adb.devices import DeviceDiscoveryService, actionable_ser
 from vscanner.services.reports.service import ReportService
 from vscanner.services.scanning.app_inventory import PackageInventoryService
 from vscanner.services.scanning.scanner import ScanService
-
 __all__ = ["ServiceRegistry"]
 
 
@@ -113,6 +112,78 @@ class ServiceRegistry:
 
     def scanner(self) -> ScanService:
         return ScanService(self.client())
+
+    # -- Stage 08 service surfaces ------------------------------------------ #
+
+    def monitor(self, serial: Optional[str] = None):
+        """SC-6 monitoring face (Stage 08) bound to the given (or current)
+        device; honest sensor readings + capability polls only."""
+        from vscanner.services.monitoring import MonitoringService
+
+        return MonitoringService(self.client(serial))
+
+    def admin(self, serial: Optional[str] = None):
+        """SC-5 administration face; destructive-capable operations MUST go
+        through its confirmation gate (R-13 service-side)."""
+        from vscanner.services.admin import AdministrationService
+
+        return AdministrationService(self.client(serial))
+
+    def root_status(self, serial: Optional[str] = None):
+        """R-05 verified tri-state root detector bound to one device."""
+        from vscanner.services.adb.root_probe import RootStatusService
+
+        return RootStatusService(self.client(serial))
+
+    def forensics(self, serial: Optional[str] = None, case_root=None):
+        """Forensics face (Stage 08). The case store defaults to the A-07
+        app-data ``cases_dir()``; tests may relocate with ``case_root``."""
+        from pathlib import Path as _Path
+
+        from vscanner.services.forensics import ForensicsService
+
+        return ForensicsService(
+            self.client(serial),
+            base_dir=_Path(case_root) if case_root else None,
+        )
+
+    def provisioning(self):
+        """Tool-status face: reuse the existing provisioning service lockup
+        for validated-tool preconditions (never provision newly here)."""
+        from vscanner.core.paths import tools_dir
+        from vscanner.services.tools.manifest import DEFAULT_MANIFEST
+        from vscanner.services.tools.provisioning import (
+            ToolProvisioningService,
+        )
+
+        return ToolProvisioningService(tools_dir(), manifest=DEFAULT_MANIFEST)
+
+    def mirror(self, serial: Optional[str] = None):
+        """SC-8 mirroring face: validate → launch → stop lifecycle."""
+        from vscanner.core.models import ToolId
+        from vscanner.services.mirroring import ScreenMirrorService
+
+        provisioning = self.provisioning()
+
+        def status():
+            return provisioning.tool_status(ToolId.SCRCPY)
+
+        def scrcpy_path():
+            path = provisioning.tool_path(ToolId.SCRCPY)
+            return str(path) if path is not None else None
+
+        return ScreenMirrorService(
+            adb_path=lambda: self.adb_path or "",
+            scrcpy_path=scrcpy_path,
+            tool_status=status,
+            serial=serial if serial is not None else self.selected_serial,
+        )
+
+    def demo(self):
+        """SC-10 demo fixture face (no device involvement)."""
+        from vscanner.services.demo import DemoService
+
+        return DemoService()
 
     def actionable_serials(self) -> tuple:
         return actionable_serials(self._discovery.list_devices())

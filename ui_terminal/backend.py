@@ -20,9 +20,11 @@ Call discipline (mission §5/§6, SERVICE_CONTRACTS §SC-1/SC-2/SC-3/SC-4/SC-9):
   app forwards them to the CURRENT screen only.
 * The scan history store (T-08) appends are small local JSON writes — the
   UI still performs them on worker threads, never on the event loop.
-* No destructive operation exists on this seam, and no on-disk device-data
-  persistence beyond the T-08 scan summaries (which hold no secret
-  material by construction).
+* No destructive operation exists on this seam EXCEPT through the Stage 08
+  ADMIN_OP / FORENSICS_OP surfaces — and those carry
+  :class:`~vscanner.core.events.OperationConfirmation` tokens down to the
+  *service-side* gate (R-13); the backend builds no gate of its own and no
+  destructive call ever runs synchronously on the UI thread.
 """
 
 from __future__ import annotations
@@ -31,23 +33,30 @@ import asyncio
 from pathlib import Path
 from typing import Callable, Optional, Protocol, Tuple
 
-from vscanner.core.errors import AdbNotAvailable
-from vscanner.core.events import JobEvent, JobKind
+from vscanner.core.errors import AdbNotAvailable, InputValidationError
+from vscanner.core.events import JobEvent, JobKind, OperationConfirmation
 from vscanner.core.models import (
     ConnectionInfo,
     DeviceProfile,
+    MirrorHandle,
+    MirrorOptions,
     ScanConfiguration,
     ScanKind,
     ScanRequest,
     ScanResultBundle,
+    SensorReading,
 )
 from vscanner.services.config import ConfigService
 from vscanner.services.history import HistoryEntry, ScanHistoryStore
 from vscanner.services.jobs import JobHandle, JobManager
 from vscanner.services.orchestration import (
+    admin_op_plan,
     app_listing_rows_plan,
+    demo_scan_plan,
     export_reports_plan,
+    forensics_job_plan,
     full_device_scan_plan,
+    monitoring_session_plan,
     single_app_scan_plan,
 )
 from vscanner.services.registry import ServiceRegistry
@@ -72,6 +81,8 @@ class DeviceBackend(Protocol):
     def list_devices(self) -> Tuple[ConnectionInfo, ...]: ...
 
     def profile(self, serial: str) -> DeviceProfile: ...
+
+    def full_device_info(self, serial: str) -> DeviceProfile: ...
 
     def start_listing_job(self, serial: str, include_system: bool) -> JobHandle: ...
 
@@ -102,6 +113,36 @@ class DeviceBackend(Protocol):
     def history_entry(self, entry: HistoryEntry) -> Path: ...
 
     def history_recent(self) -> Tuple[HistoryEntry, ...]: ...
+
+    # -- Stage 08 monitor / admin / forensics / mirror / demo ----------------- #
+
+    def root_status_now(self, serial: str) -> tuple: ...
+
+    def read_sensors_once(self, serial: str) -> tuple: ...
+
+    def start_monitoring_session(self, serial: str,
+                                 interval_s: float) -> JobHandle: ...
+
+    def stop_monitoring(self, serial: str) -> None: ...
+
+    def active_monitoring_handle(self, serial: str) -> Optional[JobHandle]: ...
+
+    def start_admin_job(self, serial: str, op: str, package: str,
+                        confirmation: OperationConfirmation) -> JobHandle: ...
+
+    def start_forensics_job(self, serial: str, op: str,
+                            kwargs: Optional[dict]) -> JobHandle: ...
+
+    def forensics_load_case(self, case_id: str): ...
+
+    def demo_bundle(self): ...
+
+    def start_demo_job(self) -> JobHandle: ...
+
+    def mirror_launch(self, serial: str, options: MirrorOptions) -> MirrorHandle: ...
+
+    def mirror_list(self, serial: Optional[str]) -> Tuple[MirrorHandle, ...]: ...
+    def mirror_stop(self, serial: str, pid: Optional[int]) -> Tuple[int, ...]: ...
 
     def shutdown_jobs(self) -> None: ...
 
@@ -163,6 +204,26 @@ class WorkspaceBackend:
     def profile(self, serial: str) -> DeviceProfile:
         """SC-4 basic profile for an explicitly selected device."""
         return self._registry().device_info(serial).get_basic_profile()
+
+    def full_device_info(self, serial: str) -> DeviceProfile:
+        """Stage 08 full device info: full getprop surface + the VERIFIED
+        root tri-state (R-05) recorded in the returned profile — the basic
+        profile keeps the honest UNKNOWN default from Stage 06 (worker
+        thread only; several shells are spent reading facts)."""
+        service = self._registry().device_info(serial)
+        profile = service.get_full_profile()
+        status, _evidence = self._registry().root_status(
+            serial).probe_evidence()
+        return DeviceProfile(
+            mfr=profile.mfr, serial=profile.serial, model=profile.model,
+            brand=profile.brand, board=profile.board, device=profile.device,
+            hardware=profile.hardware, build_id=profile.build_id,
+            android=profile.android, sdk_int=profile.sdk_int,
+            patch=profile.patch, kernel=profile.kernel,
+            fingerprint=profile.fingerprint, bootloader=profile.bootloader,
+            locale=profile.locale, timezone=profile.timezone,
+            ip=profile.ip, mac=profile.mac, root_status=status,
+        )
 
     # -- jobs (SC-2 app listing) -------------------------------------------- #
 
@@ -298,6 +359,145 @@ class WorkspaceBackend:
 
             self._history = ScanHistoryStore(history_dir())
         return self._history.recent()
+
+    # -- Stage 08: root tri-state, monitoring, admin, forensics, mirror, demo -- #
+
+    def root_status_now(self, serial: str) -> tuple:
+        """R-05 verified probe → (status-word, evidence lines).
+
+        Blocking subprocess work — worker threads only. The word is one of
+        ``rooted`` | ``not-rooted`` | ``unknown``; failures never become a
+        claimed state."""
+        return self._registry().root_status(serial).probe_evidence_words()
+
+    def read_sensors_once(self, serial: str) -> Tuple[SensorReading, ...]:
+        """R-04 honest one-shot sensor read (worker threads only)."""
+        return self._registry().monitor(serial).read_sensor_values_once()
+
+    def start_monitoring_session(self, serial: str,
+                                 interval_s: float = 2.0) -> JobHandle:
+        """MONITORING_SESSION job (SC-6): polls the honest usage surface on
+        the worker thread and emits typed snapshot payloads until the user
+        stops it or three consecutive polls fail (documented abort)."""
+        plan = monitoring_session_plan(
+            self._registry().monitor(serial), serial, interval_s=interval_s)
+        return self._manager().submit(
+            JobKind.MONITORING_SESSION, device_serial=serial, plan=plan,
+            params_summary={"device": serial, "interval_s": f"{interval_s:g}"},
+        )
+
+    def stop_monitoring(self, serial: str) -> None:
+        """Targeted cancel of the device's monitoring session — a user
+        stopping the monitor must NOT cancel a running scan (unlike
+        ``cancel_device_work``)."""
+        handle = self.active_monitoring_handle(serial)
+        if handle is not None:
+            handle.cancel()
+
+    def active_monitoring_handle(self, serial: str) -> Optional[JobHandle]:
+        for handle in reversed(self._manager().active_for_device(serial)):
+            if handle.kind is JobKind.MONITORING_SESSION:
+                return handle
+        return None
+
+    def start_admin_job(self, serial: str, op: str,
+                        package: str,
+                        confirmation: OperationConfirmation) -> JobHandle:
+        """ADMIN_OP job (SC-5): the confirmation travels to the SERVICE gate
+        (R-13) — the backend builds no gate of its own and re-raises
+        ConfirmationRequired/Invalid typed errors when calling without."""
+        plan = admin_op_plan(self._registry().admin(serial), op, package,
+                             confirmation)
+        return self._manager().submit(
+            JobKind.ADMIN_OP, device_serial=serial, plan=plan,
+            params_summary={"device": serial, "op": op, "package": package},
+        )
+
+    def start_forensics_job(self, serial: str, op: str,
+                            kwargs: Optional[dict] = None) -> JobHandle:
+        """FORENSICS_OP job wrapper; ``op`` maps to documented engine ops:
+        create_case | extract_app_data | system_logs | installed_packages |
+        running_processes | wifi_cleartext | report."""
+        service = self._registry().forensics(serial)
+        call_kwargs = dict(kwargs or {})
+
+        def _runner(context=None):  # plan passes its JobContext in
+            if op == "create_case":
+                return service.create_case(
+                    device_serial=serial,
+                    case_name=call_kwargs.get("case_name", ""),
+                    note=call_kwargs.get("note", ""),
+                    device_model=call_kwargs.get("device_model"),
+                    android_version=call_kwargs.get("android_version"),
+                )
+            case_id = call_kwargs.get("case_id")
+            if not case_id:
+                raise InputValidationError(
+                    "forensics op requires case_id", {"field": "case_id"})
+            manifest = service.load_case(case_id)
+            if op == "extract_app_data":
+                return service.extract_app_data_files(
+                    package=call_kwargs["package"],
+                    sources=tuple(call_kwargs.get("sources",
+                                                  ("databases", "shared_prefs",
+                                                   "files"))),
+                    manifest=manifest,
+                    context=context,
+                )
+            if op == "system_logs":
+                return service.extract_system_logs(manifest)
+            if op == "installed_packages":
+                return service.extract_installed_packages(manifest)
+            if op == "running_processes":
+                return service.extract_running_processes(manifest)
+            if op == "wifi_cleartext":
+                return service.extract_wifi_networks(
+                    manifest,
+                    acknowledge_cleartext_psk=call_kwargs.get("confirmation"),
+                )
+            if op == "report":
+                report_path = service.generate_report(manifest)
+                return manifest, report_path
+            raise InputValidationError(
+                f"unknown forensics op {op!r}", {"field": "op"})
+
+        plan = forensics_job_plan(_runner, f"forensics {op}")
+        summary: dict = {"device": serial, "op": op}
+        if call_kwargs.get("case_id"):
+            summary["case"] = str(call_kwargs["case_id"])[:64]
+        return self._manager().submit(
+            JobKind.FORENSICS_OP, device_serial=serial, plan=plan,
+            params_summary=summary,
+        )
+
+    def forensics_load_case(self, case_id: str) -> "object":
+        """Reopen a saved case manifest by id (worker thread; disk read)."""
+        return self._registry().forensics(None).load_case(case_id)
+
+    def demo_bundle(self) -> "object":
+        """SC-10 deterministic demo bundle (no device contact at all)."""
+        return self._registry().demo().scan()
+
+    def start_demo_job(self) -> JobHandle:
+        """DEMO job (SC-10): deterministic fixture bundle; never touches a
+        device (device_serial=None keeps it outside device scopes)."""
+        plan = demo_scan_plan(self._registry().demo())
+        return self._manager().submit(
+            JobKind.DEMO, device_serial=None, plan=plan,
+            params_summary={"fixture": "deterministic demo set"},
+        )
+
+    def mirror_launch(self, serial: str,
+                      options: MirrorOptions) -> MirrorHandle:
+        """SC-8 launch (worker thread; spawn is process creation)."""
+        return self._registry().mirror(serial).launch(options)
+
+    def mirror_list(self, serial: Optional[str]) -> Tuple[MirrorHandle, ...]:
+        """SC-8 registry snapshot (worker thread; process status reads)."""
+        return self._registry().mirror(serial).list_running()
+
+    def mirror_stop(self, serial: str, pid: Optional[int] = None) -> Tuple[int, ...]:
+        return self._registry().mirror(serial).stop(pid)
 
     def shutdown_jobs(self) -> None:
         """App-quit hook: stop streaming and give workers the grace period."""

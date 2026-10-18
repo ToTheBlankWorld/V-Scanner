@@ -1,4 +1,4 @@
-# V-Scanner 3.0 — TUI Keymap & Design Tokens (Stages 05–07)
+# V-Scanner 3.0 - TUI Keymap & Design Tokens (Stages 05-08)
 
 This document is the human-readable contract for the terminal interface
 introduced in Stage 05 and extended in Stages 06 (device workspace) and
@@ -22,16 +22,25 @@ silently drift from the code.
 | w | Device workspace | live (Stage 06) |
 | f | Scanning & findings | live (Stage 07) |
 | h | Reports & history | live (Stage 07) |
+| m | Live monitoring | live (Stage 08) |
+| o | Forensics | live (Stage 08) |
+| i | Mirroring | live (Stage 08) |
+| b | Demo data | live (Stage 08) |
 | e | Doctor | live (Stage 05) |
 | s | Settings | live (Stage 05) |
 | f1 | Help & keys | live (Stage 05) |
-| — | Live monitoring | placeholder · Stage 08 |
-| — | Forensics | placeholder · Stage 08 |
-| — | Mirroring & demo | placeholder · Stage 08 |
 
-Placeholder screens are honest: they show an "not implemented yet" banner
-with the owning roadmap stage, never fake device state or pretend controls.
+There are no placeholder destinations left as of Stage 08: every planned
+TUI section is a real screen, and each one still follows the honesty
+contract (honest banners, never fake device state or pretend controls).
 Pressing escape from any screen returns to the Dashboard.
+
+Per-screen key collisions with global navigation keys are resolved by
+screen priority (Textual): while a screen rebinds a letter (for example
+`m` toggles the live poll on the monitoring screen, `o` sorts findings on
+the scanning screen) the screen-level action wins there, and the global
+navigation still works from every screen through the command palette
+(ctrl+p) or by first pressing escape.
 
 Command palette entries mirror this exact list (with the owning stage named
 for future sections) plus "Refresh environment report" and
@@ -174,10 +183,23 @@ Conventions:
 - Very narrow terminals (< 40 columns) are expected to be uncommon; below
   the collapse thresholds the rail is hidden rather than overlapped.
 
-## Non-goals through Stage 07
+## Stage 08 sections (monitoring / forensics / mirroring / demo)
 
-Live monitoring, remediation application, mirroring, forensics, and the
-Windows desktop GUI are deliberately NOT implemented — represented only
-as placeholder navigation destinations owned by Stage 08+. Animation
-polish is Stage 13. The scanning screen reports and exports findings,
-but it never *changes* the device.
+- Live monitoring (m): r refresh devices · select a row · m start/stop the
+  live poll session · v one honest sensor read. NOT_OBSERVED is always
+  worded "not observed in this poll" — never "not in use".
+- Forensics (o): r refresh · n new case (typed name) · 1 extract app data
+  · 2 system logs · 3 installed packages · 4 running processes · 5 WiFi
+  redacted · 6 WiFi CLEARTEXT (needs the exact typed acknowledgement
+  `I ACCEPT CLEARTEXT PSK`) · 7 write report.json · o open an existing
+  case by name. Root status is the tri-state probe with evidence rows.
+- Mirroring (i): l launch scrcpy (refused honestly until the tool is
+  validated) · r list running mirror handles · k stop mirrors.
+- Demo data (b): r rebuilds the deterministic demo fixture (unchanged
+  output). The DEMO banner is unmissable; no device is ever contacted.
+
+## Non-goals through Stage 08
+
+Remediation application and the Windows desktop GUI are deliberately NOT
+implemented — the scanning screen reports and exports findings, but it
+never *changes* the device. Animation polish remains Stage 13.

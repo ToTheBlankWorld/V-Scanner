@@ -44,8 +44,8 @@ from vscanner.services.config import ConfigService
 from ui_terminal import sections as reg
 from ui_terminal.backend import DeviceBackend, WorkspaceBackend
 from ui_terminal.theme import (
-    APP_TCSS, REPORTS_TCSS, SCAN_TCSS, SECTION_TCSS, THEME_NAME,
-    VSCANNER_THEME, WORKSPACE_TCSS,
+    APP_TCSS, REPORTS_TCSS, SCAN_TCSS, SECTION_TCSS, STAGE08_TCSS,
+    THEME_NAME, VSCANNER_THEME, WORKSPACE_TCSS,
 )
 
 __all__ = ["VScannerApp", "VScannerCommands", "main", "SECTION_TCSS", "APP_TCSS"]
@@ -124,7 +124,8 @@ class VScannerApp(App):
     TITLE = "V-Scanner 3.0"
     SUB_TITLE = "Android security auditing"
 
-    CSS = APP_TCSS + SECTION_TCSS + WORKSPACE_TCSS + SCAN_TCSS + REPORTS_TCSS
+    CSS = (APP_TCSS + SECTION_TCSS + WORKSPACE_TCSS + SCAN_TCSS
+           + REPORTS_TCSS + STAGE08_TCSS)
     theme = THEME_NAME  # dispatched only after on_mount registers the palette
 
     COMMANDS = {VScannerCommands, get_system_commands_provider}
@@ -135,6 +136,10 @@ class VScannerApp(App):
         Binding("w", "goto('devices')", "Device workspace"),
         Binding("f", "goto('scan')", "Scanning & findings"),
         Binding("h", "goto('reports')", "Reports & history"),
+        Binding("m", "goto('monitoring')", "Live monitoring"),
+        Binding("o", "goto('forensics')", "Forensics"),
+        Binding("i", "goto('mirroring')", "Mirroring"),
+        Binding("b", "goto('demo')", "Demo data"),
         Binding("e", "goto('doctor')", "Doctor"),
         Binding("s", "goto('settings')", "Settings"),
         Binding("f1", "goto('help')", "Help & keys"),
