@@ -52,11 +52,12 @@ Ground rules for all stages:
 **Exclusions:** scanning, forensics, mirroring (staged later).
 **Acceptance criteria:** with a real device OR a replayed ADB fake: detect, select, switch, display info; app list renders ≥ 100 packages with search + page navigation; every action cancellable.
 
-## Stage 07 — TUI scanning and findings
+## Stage 07 — TUI scanning and findings *(COMPLETE)*
 **Scope:** Single-app analysis, full-device scan with live progress, findings browsing (typed findings), SDK/permission drill-down, insecure URL surfacing, report export (HTML/JSON/text) from TUI.
 **Dependencies:** Stage 06.
 **Exclusions:** admin ops, forensics, sensors, mirroring.
 **Acceptance criteria:** scan of a faked dataset produces typed findings matching Stage 03 golden data; export files byte-identical to legacy format for same input (regression) or documented improvements; cancel mid-scan works.
+**Delivered (2026-10-18):** scan screen (f) with own discovery/preselect + preflight target revalidation, scope toggles (t system / u deep), single-app input validation (n), honest streamed progress, cancellation (c) with PARTIAL-stream honesty, findings explorer (v/g/o filters+sorts, text filter, [ / ] pagination, per-finding provenance detail); reports screen (h) exporting the last completed bundle through the SC-9 plan (byte-identity regression-tested) + T-08 scan-history table; vscanner/services/history.py counters-only capped JSON store; Stage 04 sec5 wait-vs-delivery race closed test-side (deterministic ordering tests; stress-reproduced 9/4000, no production change). Details in STAGE_07_IMPLEMENTATION_REPORT.md.
 
 ## Stage 08 — TUI feature parity and hardening
 **Scope:** Remaining features: admin ops (uninstall/open/force-stop with confirmations), sensor monitoring (honest data), full device info, screen mirroring launcher, forensics cockpit (byte-safe extractors, case store, redaction default for WiFi PSK), demo/sample mode, error/edge-case hardening.

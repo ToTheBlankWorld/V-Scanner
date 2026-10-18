@@ -66,9 +66,9 @@ python -m pytest "tests/integration/test_syntax_baseline.py"
 - **Syntax validation** compiles all 11 legacy modules plus the full engine package and the TUI layer (`compileall` green for `vscanner ui_terminal tests`).
 - **Async TUI tests** (Stage 05): `pytest-asyncio` runs in `asyncio_mode = "auto"` (`asyncio_default_fixture_loop_scope = "function"`), so Textual `run_test` harness coroutines need no per-test markers. Harness rules: headless `run_test(size=...)` only, `pilot.pause()` after actions, injected tmp-path `ConfigService` — never the developer's real config dir; no real device, network, root, or provisioning.
 
-## 6. Current coverage result (honest, re-measured at Stage 06)
+## 6. Current coverage result (honest, re-measured at Stage 07)
 
-Stage 02 measured cli-only TOTAL 20%. Stage 03 re-measured over `cli` + the new engine; Stage 04 added the `ui_terminal`/`ui_desktop` bridge stubs; Stage 05 added the full TUI layer to the measured source set; Stage 06 re-measured after adding the device workspace (same command: `python -m coverage run -m pytest -q` + `report`):
+Stage 02 measured cli-only TOTAL 20%. Stage 03 re-measured over `cli` + the new engine; Stage 04 added the `ui_terminal`/`ui_desktop` bridge stubs; Stage 05 added the full TUI layer to the measured source set; Stage 06 re-measured after adding the device workspace; Stage 07 re-measured after adding the scan/reports screens + history store (same command: `python -m coverage run -m pytest -q` + `report`):
 
 | Module | Statements | Missed | Coverage |
 |---|---:|---:|---:|
@@ -98,21 +98,24 @@ Stage 02 measured cli-only TOTAL 20%. Stage 03 re-measured over `cli` + the new 
 | ui_terminal/screens/shell.py (Stage 05) | 66 | 4 | 94% |
 | ui_terminal/app.py (Stage 05) | 99 | 10 | 90% |
 | ui_terminal/screens/settings.py (Stage 05) | 108 | 13 | 88% |
-| ui_terminal/backend.py (Stage 06) | 72 | 7 | 90% |
-| ui_terminal/screens/workspace.py (Stage 06) | 382 | 32 | 92% |
+| ui_terminal/backend.py (Stage 06, +07 surface) | 124 | 42 | 66% |
+| ui_terminal/screens/workspace.py (Stage 06) | 382 | 29 | 92% |
+| ui_terminal/screens/scan.py (Stage 07) | 541 | 66 | 88% |
+| ui_terminal/screens/reports.py (Stage 07) | 174 | 9 | 95% |
+| vscanner/services/history.py (Stage 07, T-08) | 93 | 19 | 80% |
 | cli/main.py | 926 | 883 | 5% |
 | cli/scanner.py | 1033 | 775 | 25% |
 | cli/tools_manager.py | 282 | 165 | 41% |
 | cli/adb_setup.py | 80 | 46 | 42% |
 | cli/report_generator.py | 95 | 7 | 93% |
 | cli/permissions.py (shim) | 7 | 1 | 86% |
-| **TOTAL (cli + vscanner + ui)** | **6338** | **2869** | **55%** |
+| **TOTAL (cli + vscanner + ui)** | **7214** | **2998** | **58%** |
 
-Interpretation: the engine is well anchored (events/models/KB/redaction/reports/orchestration ≥ 92%; surgery-grade anchors on every service; jobs.py 91%), the Stage 06 workspace slice is anchored at 90–95% (workspace 92%, backend 90%, app_inventory `list_app_rows` 95%, `app_listing_rows_plan` 100%, registry 86%) via Textual headless harness + fake-transport pipeline tests, and the Stage 05 TUI layer remains anchored at 88–100%. Legacy interactive/rich-UI paths remain uncovered by design decision (that coverage arrives with service decomposition in Stages 06–12, not by writing brittle UI tests against legacy print flows). Do **not** flatten the 55% number into a quality claim; cite the per-engine anchors.
+Interpretation: the engine is well anchored (events/models/KB/redaction/reports/orchestration ≥ 92%; surgery-grade anchors on every service; jobs.py 91%), the Stage 06 workspace slice is anchored at 90–95% (workspace 92%, app_inventory `list_app_rows` 95%), and the Stage 07 scan/reports slice is anchored at 80–95% (scan screen 88%, reports screen 95%, T-08 history store 80% — the missed lines are the production directory-bootstrap and eviction paths covered indirectly), via Textual headless harness + fake-transport pipeline tests. Legacy interactive/rich-UI paths remain uncovered by design decision (that coverage arrives with service decomposition in Stages 06–12, not by writing brittle UI tests against legacy print flows). Do **not** flatten the 58% number into a quality claim; cite the per-engine anchors.
 
-## 7. Suite facts (Stage 02 → Stage 05)
+## 7. Suite facts (Stage 02 → Stage 07)
 
-- Stage 02: **106 passed, 7 xfailed, 0 skipped** (9 files). Stage 03: **276 passed, 4 xfailed, 0 skipped** (17 files). Stage 04: **363 passed, 4 xfailed, 0 skipped** (21 files), runtime ≈ 3.5 s. Stage 05: **399 passed, 4 xfailed, 0 skipped** (24 files), runtime ≈ 22 s (Textual harness tests dominate; still device/network/root-free). Stage 06: **446 passed, 4 xfailed, 0 skipped** (27 files), runtime ≈ 62 s (new: `test_stage06_engine.py` 10, `test_device_workspace.py` 31, `test_inventory_ui.py` 4, + import-guard/doc-consistency additions).
+- Stage 02: **106 passed, 7 xfailed, 0 skipped** (9 files). Stage 03: **276 passed, 4 xfailed, 0 skipped** (17 files). Stage 04: **363 passed, 4 xfailed, 0 skipped** (21 files), runtime ≈ 3.5 s. Stage 05: **399 passed, 4 xfailed, 0 skipped** (24 files), runtime ≈ 22 s (Textual harness tests dominate; still device/network/root-free). Stage 06: **446 passed, 4 xfailed, 0 skipped** (27 files), runtime ≈ 62 s (new: `test_stage06_engine.py` 10, `test_device_workspace.py` 31, `test_inventory_ui.py` 4, + import-guard/doc-consistency additions). Stage 07: **505 passed, 4 xfailed, 0 skipped** (30 files), runtime ≈ 107 s (new: `test_stage07_engine.py` 15, `test_scan_screen.py` 24, `test_reports_ui.py` 12; `test_services_jobs.py` grew to 44 with the deterministic race-ordering tests and passes ×3 consecutive runs).
 - No device, no network, no root; all artifacts under pytest temp dirs; one deterministic R-07 proof spawns `sys.executable` with list-argv (never a shell string).
 - All 11 legacy modules + the whole engine byte-compile (`compileall` green).
 
