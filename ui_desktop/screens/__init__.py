@@ -16,6 +16,8 @@ from .devices import DeviceWorkspacePage
 from .doctor import build_doctor
 from .help import build_help_section
 from .placeholder import build_placeholder
+from .reports import ReportsPage
+from .scan import ScanWorkspacePage
 
 __all__ = [
     "build_dashboard",
@@ -23,4 +25,6 @@ __all__ = [
     "build_help_section",
     "build_placeholder",
     "DeviceWorkspacePage",
+    "ScanWorkspacePage",
+    "ReportsPage",
 ]

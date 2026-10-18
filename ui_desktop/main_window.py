@@ -50,6 +50,8 @@ from .screens import (
     build_placeholder,
 )
 from .screens.devices import DeviceWorkspacePage
+from .screens.reports import ReportsPage
+from .screens.scan import ScanWorkspacePage
 from .sections import (
     INITIAL_SECTION_ID,
     SECTION_REGISTRY,
@@ -135,7 +137,8 @@ class MainWindow(QMainWindow):
         status = QStatusBar(self)
         status.setObjectName("statusBar")
         version_label = QLabel(
-            f"v{__version__} — Stage 09 shell + Stage 10 device workspace",
+            f"v{__version__} — Stage 09 shell + Stage 10 device workspace "
+            "+ Stage 11 scanning, findings, reports & history",
             status)
         version_label.setObjectName("statusVersion")
         status.addPermanentWidget(version_label)
@@ -280,6 +283,28 @@ class MainWindow(QMainWindow):
                 return DeviceWorkspacePage(
                     self._backend, self._job_bridge.hub, _parent)
             return build_devices_view
+        if section.section_id == "scan":
+            def build_scan_view(_parent: QWidget) -> QWidget:
+                if self._backend is None or self._job_bridge is None:
+                    return ErrorState(
+                        "Scanning workspace unavailable",
+                        "No engine configuration is wired in this launch, "
+                        "so scans cannot run. Fix the configuration and "
+                        "restart the desktop shell.")
+                return ScanWorkspacePage(
+                    self._backend, self._job_bridge.hub, _parent)
+            return build_scan_view
+        if section.section_id == "reports":
+            def build_reports_view(_parent: QWidget) -> QWidget:
+                if self._backend is None or self._job_bridge is None:
+                    return ErrorState(
+                        "Reports workspace unavailable",
+                        "No engine configuration is wired in this launch, "
+                        "so report export and history cannot run. Fix the "
+                        "configuration and restart the desktop shell.")
+                return ReportsPage(
+                    self._backend, self._job_bridge.hub, _parent)
+            return build_reports_view
         if section.section_id == "doctor":
             def build_doctor_view(_parent: QWidget) -> QWidget:
                 return build_doctor(host_details=self._host_details)

@@ -71,15 +71,18 @@ SECTION_REGISTRY: tuple[DesktopSection, ...] = (
     ),
     DesktopSection(
         "scan", "Scanning & findings",
-        "Scan configuration and findings explorer",
-        "future", "Stage 11",
-        "Scanning and findings ship in Stage 11. Nothing is scanned or collected yet.",
+        "Scan targets, live progress, findings explorer",
+        "live", "",
+        "Scan an explicitly selected device with the shared engine, watch "
+        "real engine progress and cancellable results, and explore the "
+        "typed findings it reports.",
     ),
     DesktopSection(
         "reports", "Reports & history",
         "Report export and scan history",
-        "future", "Stage 11",
-        "Reports and history ship in Stage 11. No reports exist in this stage.",
+        "live", "",
+        "Export the last completed full-device scan through the legacy "
+        "report service and read the local counters-only scan history.",
     ),
     DesktopSection(
         "monitoring", "Live monitoring",

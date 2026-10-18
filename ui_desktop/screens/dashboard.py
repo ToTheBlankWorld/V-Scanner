@@ -1,4 +1,4 @@
-"""Dashboard (Stage 10): honest engine/config/ADB readiness for the desktop.
+"""Dashboard (Stage 10/11): honest engine/config/ADB readiness for the desktop.
 
 What this page REALLY does (everything else is honestly declared absent):
 
@@ -12,9 +12,10 @@ What this page REALLY does (everything else is honestly declared absent):
   checked / no path configured / invalid / validated" stay distinct.
 * A navigation action into the real device workspace (Stage 10). The
   dashboard fabricates nothing about devices: no counts, no connection
-  state, no scan/history/security claims. Scanning, findings, reports,
+  state, no scan/history/security claims. Scanning, findings, reports
+  and history are real Stage 11 sections elsewhere in the shell;
   monitoring, forensics, mirroring and demo data remain honest
-  future-stage placeholders (owned by Stages 11–12).
+  future-stage placeholders (owned by Stage 12).
 """
 
 from __future__ import annotations
@@ -101,13 +102,16 @@ def _shell_status_panel(
     row.addWidget(StatusChip("ok"))
     ready = QLabel(
         f"Desktop shell ready — V-Scanner 3.0 {__version__} "
-        "(Stage 09 shell, Stage 10 device workspace)")
+        "(Stage 09 shell, Stage 10 device workspace, Stage 11 scanning "
+        "& findings, reports & history)")
     ready.setObjectName("bodyText")
     row.addWidget(ready)
     hint = QLabel(
         "Open the Device workspace to discover connected Android devices, "
-        "read their details and browse their installed apps. Scanning, "
-        "findings, reports, monitoring, forensics, mirroring and demo data "
+        "read their details and browse their installed apps; the Scanning "
+        "& findings section runs engine scans on an explicitly selected "
+        "device, and Reports & history exports the last completed "
+        "full-device scan. Monitoring, forensics, mirroring and demo data "
         "are later-stage sections and stay honest placeholders until then.")
     hint.setObjectName("hintText")
     hint.setWordWrap(True)
@@ -317,8 +321,6 @@ def _boundaries_panel() -> Panel:
     layout = Panel.body_layout(panel)
     _heading(layout, "What later stages will add")
     for title, stage in (
-        ("Scanning & findings", "Stage 11"),
-        ("Reports & history", "Stage 11"),
         ("Live monitoring, forensics, mirroring, demo data", "Stage 12"),
     ):
         layout.addWidget(MetadataRow(
