@@ -79,9 +79,11 @@ Verification category codes: **[T]** automated test suite, **[M]** manual verifi
 
 **Stage 09 execution clarification (2026-10-18):** "packaging groundwork" is delivered as (a) package/entry-point metadata (`vscanner-desktop`, `[desktop]` extra, setuptools packages) and (b) a themed programmatic brand mark in the shell; the binary app icon asset is a Stage 14 packaging deliverable (no generated binaries are committed from source stages). "High-DPI correct" relies on Qt 6 default scaling; DPI/visual verification on real Windows 10+11 displays plus screen-reader conformance remain [M] items not claimable from the offscreen test harness (recorded in STAGE_09_IMPLEMENTATION_REPORT.md §4).
 
-## Stage 10 — Desktop device management
+## Stage 10 - Desktop device management
 **Evidence:** same checklist as Stage 06 executed in Qt harness [T] (+[M] real device where available); destructive-op confirmations [T] (R-13 repeats).
-## Stage 11 — Desktop scanner & findings
+**Required outputs:** device discovery/selection/switch UI; device info panels incl. full profile; app inventory browser (search, paginate, label-source badge).
+**Clarification (2026-10-18, recorded):** the destructive-op confirmation line (R-13 repeats) belongs to the desktop **admin operations**; admin ops were deferred to the Stage 12 parity pass (ROADMAP deviation note in `STAGE_10_IMPLEMENTATION_REPORT.md` §1.7) — no destructive device command exists in the desktop layer, so there is nothing to gate yet. Stage 10 [T] evidence delivered: discovery/selection (single-device auto-select only, stale-safe invalidation), root tri-state details, inventory browser (search/system filter/pagination/provenance/cancel), cancellable APP_LISTING on the Stage 04 manager, settings ADB validation — all offscreen Qt harness, no device available (recorded when absent per Stage 06 wording).
+## Stage 11 - Desktop scanner & findings
 **Evidence:** Stage 07 checklist repeated in desktop; local history round-trip; export preview.
 ## Stage 12 — Desktop remaining parity
 **Evidence:** full C-Fxx table desktop column completed or exclusion approvals logged; R-12/R-13 clearance per service contract on every desktop screen.

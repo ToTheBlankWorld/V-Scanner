@@ -7,6 +7,8 @@
 
 **Stage 09 note (2026-10-18):** no Desktop-requirement clause is claimed satisfied yet — Stage 09 delivered only the desktop application foundation (`ui_desktop/` shell, design tokens, navigation registry, honest placeholders, settings dialog through ConfigService, wired Qt job bridge; 38 offscreen tests; `STAGE_09_IMPLEMENTATION_REPORT.md`). The `Desktop requirement` column becomes testable claim-by-claim starting with Stage 10 (devices) and Stage 11 (scan/reports).
 
+**Stage 10 note (2026-10-18):** the device rows of the `Desktop requirement` column (device discovery + selection, device info/device pane, app inventory browser) now carry offscreen-harness [T] evidence on the Qt surface (`test_stage10_desktop.py`, 67 tests; `STAGE_10_IMPLEMENTATION_REPORT.md`) — the same behavior contracts as the `TUI 3.0 Stage 06/08` clauses, driven through the real engine services with faked ADB transports. No [M] real-device claim is made (no hardware; recorded-when-absent per Stage 06 wording). Desktop admin operations are NOT delivered this stage (deferred to the Stage 12 parity pass, documented in ROADMAP/AC/REPORT) — their Desktop-requirement clauses remain unclaimed.
+
 Columns: **Existing implementation** · **Dependencies** · **Side effects** · **Current evidence** · **TUI requirement** · **Desktop requirement**.
 
 ---

@@ -73,11 +73,12 @@ Ground rules for all stages:
 **Acceptance criteria:** desktop launches on Windows 10/11 from the dev environment; renders dashboard skeleton; runs job system correctly in Qt event loop (integration test); High-DPI correct.
 **Delivered (2026-10-18, commit `058de46` + docs commit):** `ui_desktop/` shell (Fusion + generated theme QSS, single token source), 11-section registry (3 live + 7 honest placeholders + settings dialog), cached `QStackedWidget` navigation, `SettingsDialog` through ConfigService [T], Qt job bridge wired with GUI-thread delivery proven [T]; PySide6 as optional `[desktop]` extra; 640-test suite ×2 green, mypy 109 files clean; full evidence and [M] limitations in `STAGE_09_IMPLEMENTATION_REPORT.md`.
 
-## Stage 10 — Desktop dashboard and device management
+## Stage 10 - Desktop dashboard and device management
 **Scope:** Device discovery/switching UI, device info panes, app inventory browser, admin operations with confirmation dialogs.
 **Dependencies:** Stage 09.
 **Exclusions:** scanning/forensics/mirroring UIs.
 **Acceptance criteria:** same acceptance set as Stage 06, executed in Qt harness + manual with device where available.
+**Delivered (2026-10-18):** truthful dashboard (config + doctor + explicit user-initiated ADB probe, "not checked" until probed), device discovery/selection with stale-safe and single-device-only auto-selection, honest root tri-state details, installed-app inventory (search/system filter/100-row pagination/provenance "inferred (derived)") on cancellable Stage 04 APP_LISTING jobs, worker-seam (`DesktopBackend`/`WorkerCoordinator`) with queued GUI-thread delivery, settings ADB "Validate path now". **Scope deviation (recorded): admin operations with confirmation dialogs deferred to the Stage 12 parity pass — no destructive device command exists in the desktop layer.** 707-test suite ×2 green (67 new offscreen tests), mypy 113 files clean; full evidence, engine truths (APP_LISTING is not mutex-grouped — overlap prevention stays at the workspace surface; `JobTerminalEvent` carries no device_serial) and [M] limitations in `STAGE_10_IMPLEMENTATION_REPORT.md`.
 
 ## Stage 11 — Desktop scanner and findings
 **Scope:** Scan configuration, live job progress, findings tables/detail views, report export, scan history (local, optional).
