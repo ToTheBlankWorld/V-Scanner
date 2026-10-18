@@ -66,11 +66,12 @@ Ground rules for all stages:
 **Acceptance criteria:** parity checklist against `FEATURE_PARITY_MATRIX.md` — every C-Fxx row implemented or explicitly excluded with recorded rationale; no feature regression vs legacy CLI contract; keyboard-only operability test; TUI has no blocking I/O on the event loop (latency check).
 **Delivered (2026-10-18):** live monitoring (m), forensics cockpit (o), mirroring (i), demo data (b), full device info (workspace f), admin ops (workspace u/l/k with re-type confirmation modal), all-engine-reachable screens registry (no placeholders); R-03..R-07 + R-12/R-13 remediations landed (detection-only sensor honesty, deep-scan URL/credential extraction with redacted presentation, verified root tri-state, byte-safe data extraction, WiFi redaction default, service-side confirmation gate); legacy `scanner.py`/`digital_forensics.py` became thin adapters over the engine; engine test volume 66 new cases; TUI smoke + concurrency gates recorded. Details in STAGE_08_IMPLEMENTATION_REPORT.md.
 
-## Stage 09 — Desktop foundation and design system (PySide6)
+## Stage 09 - Desktop foundation and design system (PySide6) *(COMPLETE)*
 **Scope:** Qt main window, design tokens shared with TUI vocab, layouts, navigation, settings dialog, notifications/status handling, packaging groundwork (app icon, metadata).
 **Dependencies:** Stage 08 TUI parity complete.
 **Exclusions:** feature logic (reuses services).
 **Acceptance criteria:** desktop launches on Windows 10/11 from the dev environment; renders dashboard skeleton; runs job system correctly in Qt event loop (integration test); High-DPI correct.
+**Delivered (2026-10-18, commit `058de46` + docs commit):** `ui_desktop/` shell (Fusion + generated theme QSS, single token source), 11-section registry (3 live + 7 honest placeholders + settings dialog), cached `QStackedWidget` navigation, `SettingsDialog` through ConfigService [T], Qt job bridge wired with GUI-thread delivery proven [T]; PySide6 as optional `[desktop]` extra; 640-test suite ×2 green, mypy 109 files clean; full evidence and [M] limitations in `STAGE_09_IMPLEMENTATION_REPORT.md`.
 
 ## Stage 10 — Desktop dashboard and device management
 **Scope:** Device discovery/switching UI, device info panes, app inventory browser, admin operations with confirmation dialogs.

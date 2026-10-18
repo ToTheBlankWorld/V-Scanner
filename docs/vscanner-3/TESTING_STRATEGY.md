@@ -66,9 +66,9 @@ python -m pytest "tests/integration/test_syntax_baseline.py"
 - **Syntax validation** compiles all 11 legacy modules plus the full engine package and the TUI layer (`compileall` green for `vscanner ui_terminal tests`).
 - **Async TUI tests** (Stage 05): `pytest-asyncio` runs in `asyncio_mode = "auto"` (`asyncio_default_fixture_loop_scope = "function"`), so Textual `run_test` harness coroutines need no per-test markers. Harness rules: headless `run_test(size=...)` only, `pilot.pause()` after actions, injected tmp-path `ConfigService` — never the developer's real config dir; no real device, network, root, or provisioning.
 
-## 6. Current coverage result (honest, re-measured at Stage 07)
+## 6. Current coverage result (honest, re-measured per stage; last: Stage 09)
 
-Stage 02 measured cli-only TOTAL 20%. Stage 03 re-measured over `cli` + the new engine; Stage 04 added the `ui_terminal`/`ui_desktop` bridge stubs; Stage 05 added the full TUI layer to the measured source set; Stage 06 re-measured after adding the device workspace; Stage 07 re-measured after adding the scan/reports screens + history store (same command: `python -m coverage run -m pytest -q` + `report`):
+Stage 02 measured cli-only TOTAL 20%. Stage 03 re-measured over `cli` + the new engine; Stage 04 added the `ui_terminal`/`ui_desktop` bridge stubs; Stage 05 added the full TUI layer to the measured source set; Stage 06 re-measured after adding the device workspace; Stage 07 re-measured after adding the scan/reports screens + history store; Stage 09 re-measured after adding the full desktop shell layer (same command: `python -m coverage run -m pytest -q` + `report`). Stage 09 TOTAL: **68%** (9825 statements). Per-module ui_desktop values are in §7 and the Stage 09 report; the table below preserves the historical per-module record from Stage 07:
 
 | Module | Statements | Missed | Coverage |
 |---|---:|---:|---:|
@@ -87,7 +87,8 @@ Stage 02 measured cli-only TOTAL 20%. Stage 03 re-measured over `cli` + the new 
 | vscanner/services/tools/provisioning.py | 187 | 33 | 82% |
 | vscanner/services/tools/_extraction.py | 45 | 17 | 62% |
 | vscanner/services/registry.py | 64 | 9 | 86% (Stage 06: + `device_info` accessor) |
-| ui_desktop/jobs_bridge_qt.py | 27 | 0 | 100% |
+| ui_desktop/jobs_bridge_qt.py | 76 | 6 | 92% (Stage 09: stub layer at 100% + Qt signal hub/bridge) |
+| ui_desktop/* Stage 09 (shell/screens/dialog/theme) | 6915−905 | — | measured at Stage 09: theme 98%, settings_dialog 100%, screens 89–100%, main_window 89%, widgets 81%, app.py 48% (exec-loop paths), `__main__.py` 0% (thin launcher) — see STAGE_09_IMPLEMENTATION_REPORT.md §5 |
 | ui_terminal/jobs_bridge_async.py | 59 | 8 | 86% |
 | ui_terminal/theme.py (Stage 05) | 20 | 0 | 100% |
 | ui_terminal/sections.py (Stage 05) | 46 | 0 | 100% |
@@ -115,7 +116,7 @@ Interpretation: the engine is well anchored (events/models/KB/redaction/reports/
 
 ## 7. Suite facts (Stage 02 → Stage 07)
 
-- Stage 02: **106 passed, 7 xfailed, 0 skipped** (9 files). Stage 03: **276 passed, 4 xfailed, 0 skipped** (17 files). Stage 04: **363 passed, 4 xfailed, 0 skipped** (21 files), runtime ≈ 3.5 s. Stage 05: **399 passed, 4 xfailed, 0 skipped** (24 files), runtime ≈ 22 s (Textual harness tests dominate; still device/network/root-free). Stage 06: **446 passed, 4 xfailed, 0 skipped** (27 files), runtime ≈ 62 s (new: `test_stage06_engine.py` 10, `test_device_workspace.py` 31, `test_inventory_ui.py` 4, + import-guard/doc-consistency additions). Stage 07: **505 passed, 4 xfailed, 0 skipped** (30 files), runtime ≈ 107 s (new: `test_stage07_engine.py` 15, `test_scan_screen.py` 24, `test_reports_ui.py` 12; `test_services_jobs.py` grew to 44 with the deterministic race-ordering tests and passes ×3 consecutive runs). Stage 08: **602 passed, 0 xfailed, 0 skipped** (33 files), runtime ≈ 150 s (new: `test_stage08_engine.py` 66 — services, plans, bridge §13 containment, deep-scan integration; `test_stage08_ui.py` 17 — monitoring/forensics/mirroring/demo/admin screens; `test_known_defects.py` flipped to 16 fixed-behavior tests, 0 xfails). Repeat-run verification: ×2 recorded in the Stage 08 report.
+- Stage 02: **106 passed, 7 xfailed, 0 skipped** (9 files). Stage 03: **276 passed, 4 xfailed, 0 skipped** (17 files). Stage 04: **363 passed, 4 xfailed, 0 skipped** (21 files), runtime ≈ 3.5 s. Stage 05: **399 passed, 4 xfailed, 0 skipped** (24 files), runtime ≈ 22 s (Textual harness tests dominate; still device/network/root-free). Stage 06: **446 passed, 4 xfailed, 0 skipped** (27 files), runtime ≈ 62 s (new: `test_stage06_engine.py` 10, `test_device_workspace.py` 31, `test_inventory_ui.py` 4, + import-guard/doc-consistency additions). Stage 07: **505 passed, 4 xfailed, 0 skipped** (30 files), runtime ≈ 107 s (new: `test_stage07_engine.py` 15, `test_scan_screen.py` 24, `test_reports_ui.py` 12; `test_services_jobs.py` grew to 44 with the deterministic race-ordering tests and passes ×3 consecutive runs). Stage 08: **602 passed, 0 xfailed, 0 skipped** (33 files), runtime ≈ 150 s (new: `test_stage08_engine.py` 66 — services, plans, bridge §13 containment, deep-scan integration; `test_stage08_ui.py` 17 — monitoring/forensics/mirroring/demo/admin screens; `test_known_defects.py` flipped to 16 fixed-behavior tests, 0 xfails). Repeat-run verification: ×2 recorded in the Stage 08 report. Stage 09: **640 passed, 0 xfailed, 0 skipped** (34 files), runtime ≈ 59 s (new: `test_stage09_desktop.py` 38 — offscreen PySide6 harness for shell lifecycle/navigation/design-system/settings/Qt-job-bridge GUI-thread rule/architecture; PySide6 6.12.0 as the optional `[desktop]` extra; `pytest.importorskip` keeps engine-only environments green). Repeat-run verification: ×2 recorded in the Stage 09 report (run 2 under coverage).
 - No device, no network, no root; all artifacts under pytest temp dirs; one deterministic R-07 proof spawns `sys.executable` with list-argv (never a shell string).
 - All 11 legacy modules + the whole engine byte-compile (`compileall` green).
 

@@ -70,12 +70,14 @@ Verification category codes: **[T]** automated test suite, **[M]** manual verifi
 **Security:** destructive flows all gated through OperationConfirmation service-side even when reached via legacy shim ([T]).
 **Exclusions:** desktop features; Android.
 
-## Stage 09 — Desktop foundation
+## Stage 09 - Desktop foundation
 
 **Required outputs:** Qt app shell, design tokens, main window, settings dialog, Qt job bridge wired, packaging groundwork (icons/metadata).
 **Evidence:** [T] Qt bridge event integration (fires on GUI thread); high-DPI screenshots; [M] launch on Windows 10 + 11 profiles; settings persistence through ConfigService [T].
 **Compatibility:** parity with Stage 08 shell features that make sense on desktop; legacy CLI untouched.
 **Exclusions:** scanner views.
+
+**Stage 09 execution clarification (2026-10-18):** "packaging groundwork" is delivered as (a) package/entry-point metadata (`vscanner-desktop`, `[desktop]` extra, setuptools packages) and (b) a themed programmatic brand mark in the shell; the binary app icon asset is a Stage 14 packaging deliverable (no generated binaries are committed from source stages). "High-DPI correct" relies on Qt 6 default scaling; DPI/visual verification on real Windows 10+11 displays plus screen-reader conformance remain [M] items not claimable from the offscreen test harness (recorded in STAGE_09_IMPLEMENTATION_REPORT.md §4).
 
 ## Stage 10 — Desktop device management
 **Evidence:** same checklist as Stage 06 executed in Qt harness [T] (+[M] real device where available); destructive-op confirmations [T] (R-13 repeats).

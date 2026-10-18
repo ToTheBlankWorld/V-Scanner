@@ -5,6 +5,8 @@
 
 **Chunking:** CLI features are C-Fxx; Android-only capabilities are A-Fxx; the TUI/Desktop columns are planned targets, **not completed** — they are hard "parity statements" the later stages must satisfy and test before any parity claim is made (Stages 05–08 for TUI, 09–12 for Desktop).
 
+**Stage 09 note (2026-10-18):** no Desktop-requirement clause is claimed satisfied yet — Stage 09 delivered only the desktop application foundation (`ui_desktop/` shell, design tokens, navigation registry, honest placeholders, settings dialog through ConfigService, wired Qt job bridge; 38 offscreen tests; `STAGE_09_IMPLEMENTATION_REPORT.md`). The `Desktop requirement` column becomes testable claim-by-claim starting with Stage 10 (devices) and Stage 11 (scan/reports).
+
 Columns: **Existing implementation** · **Dependencies** · **Side effects** · **Current evidence** · **TUI requirement** · **Desktop requirement**.
 
 ---
