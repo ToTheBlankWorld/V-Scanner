@@ -35,6 +35,7 @@ from vscanner.services.config import ConfigService
 
 from . import APP_NAME, APP_VERSION
 from . import theme
+from .backend import DesktopBackend
 from .main_window import MainWindow
 
 __all__ = ["create_application", "bootstrap_window", "run", "main"]
@@ -66,7 +67,9 @@ def bootstrap_window(config_service: Optional[ConfigService] = None) -> MainWind
 
     Configuration is only *read* at startup (strict ``ConfigService.load``).
     A missing file is a valid first-run state; unreadable/invalid content
-    becomes the dashboard error message. No device or subprocess work.
+    becomes the dashboard error message. No device or subprocess work: the
+    ``DesktopBackend`` is composed but performs no I/O here (its registry,
+    job manager threads and probes start lazily on user actions).
     """
     if config_service is None:
         config_service = default_config_service()
@@ -77,7 +80,9 @@ def bootstrap_window(config_service: Optional[ConfigService] = None) -> MainWind
         config_error = str(exc)
     except OSError as exc:
         config_error = f"config file is not accessible: {exc}"
-    return MainWindow(config_service, config_error=config_error)
+    backend = DesktopBackend(config_service)
+    return MainWindow(config_service, backend=backend,
+                      config_error=config_error)
 
 
 def run(argv: Optional[list[str]] = None, *,

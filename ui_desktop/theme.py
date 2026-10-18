@@ -290,6 +290,67 @@ QLineEdit {{
 }}
 QLineEdit:focus {{ border: 1px solid {FOCUS_RING}; }}
 QLineEdit:disabled {{ color: {TEXT_MUTED}; }}
+QCheckBox {{ background: transparent; spacing: 6px; }}
+QCheckBox:disabled {{ color: {TEXT_MUTED}; }}
+
+/* ---- tabs (device workspace details/apps) ------------------------------ */
+QTabWidget::pane {{
+    background: {SURFACE_BG};
+    border: 1px solid {BORDER};
+    border-radius: {RADIUS}px;
+    top: -1px;
+}}
+QTabWidget > QWidget {{ background: {SURFACE_BG}; }}
+QTabBar::tab {{
+    background: transparent;
+    color: {TEXT_SECONDARY};
+    padding: 5px 14px;
+    border: 1px solid transparent;
+    border-bottom: 1px solid {BORDER};
+    border-top-left-radius: 4px;
+    border-top-right-radius: 4px;
+    font-weight: 600;
+}}
+QTabBar::tab:selected {{
+    background: {SURFACE_BG};
+    color: {TEXT_PRIMARY};
+    border: 1px solid {BORDER};
+    border-bottom: 1px solid {SURFACE_BG};
+}}
+QTabBar::tab:hover:!selected {{ color: {TEXT_PRIMARY}; }}
+QTabBar::tab:focus {{ border-color: {FOCUS_RING}; }}
+
+/* ---- tables (model/view surfaces: devices, details, apps) -------------- */
+QTableView {{
+    background: {SURFACE_BG};
+    color: {TEXT_PRIMARY};
+    border: 1px solid {BORDER};
+    border-radius: {RADIUS}px;
+    gridline-color: {SEPARATOR};
+    selection-background-color: {SELECTION_BG};
+    selection-color: {TEXT_PRIMARY};
+    alternate-background-color: {ELEVATED_BG};
+}}
+QTableView::item {{
+    padding: 3px 6px;
+    border: none;
+}}
+QTableView::item:focus {{ border: 1px solid {FOCUS_RING}; border-radius: 2px; }}
+QTableView QTableCornerButton::section {{
+    background: {SURFACE_BG};
+    border: none;
+}}
+QHeaderView::section {{
+    background: {ELEVATED_BG};
+    color: {TEXT_SECONDARY};
+    border: none;
+    border-right: 1px solid {SEPARATOR};
+    border-bottom: 1px solid {BORDER};
+    padding: 4px 8px;
+    font-size: {META_SIZE};
+    font-weight: 600;
+}}
+QTableView QLineEdit {{ background: {WINDOW_BG}; }}
 
 /* ---- status bar / footer --------------------------------------------- */
 QStatusBar {{

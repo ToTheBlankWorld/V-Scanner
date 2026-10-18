@@ -1,18 +1,21 @@
-"""Settings dialog (Stage 09 desktop) — ADB path through ``ConfigService``.
+"""Settings dialog (Stage 10 desktop) — ADB path through ``ConfigService``.
 
-The only settings surface the Stage 09 scope requires (ROADMAP Stage 09:
-"settings dialog"). All persistence goes through
-:class:`vscanner.services.config.ConfigService` — no settings file I/O is
-duplicated here, and validation errors never crash the dialog (honest
-inline error text; AC evidence "settings persistence through ConfigService").
+Persistence goes only through :class:`vscanner.services.config.ConfigService`
+— no settings file I/O is duplicated here; failures show honest inline
+error text and never crash the dialog (Stage 09 behavior, kept).
 
-Deliberately out of scope (documented, not faked): live ADB path validation
-launches a process — that arrives with device management (Stage 10).
+Stage 10 addition (the part Stage 09 deliberately deferred): a strictly
+user-initiated "Validate path now" control. It launch-probes the typed
+path with the shared engine check
+(``services.adb.executable.check_adb_valid`` — one ``adb version``
+subprocess) inside a background worker, never on the GUI thread and never
+automatically at dialog open or on Apply. The states "untested / valid /
+invalid / refused (busy)" are distinct in the inline status.
 """
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Callable, Optional
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
@@ -25,9 +28,11 @@ from PySide6.QtWidgets import (
 )
 
 from vscanner.core.errors import ConfigError
+from vscanner.services.adb.executable import check_adb_valid
 from vscanner.services.config import ConfigService, ConfigSnapshot
 
 from . import theme
+from .workers import WorkerCoordinator
 from .widgets import button
 
 __all__ = ["SettingsDialog"]
@@ -37,10 +42,14 @@ class SettingsDialog(QDialog):
     """Modal settings editor backed by the ConfigService (SC-11)."""
 
     def __init__(self, config_service: ConfigService,
-                 parent: Optional[QWidget] = None) -> None:
+                 parent: Optional[QWidget] = None, *,
+                 adb_probe: Optional[Callable[[str], bool]] = None) -> None:
         super().__init__(parent)
         self._config_service = config_service
         self._snapshot: Optional[ConfigSnapshot] = None
+        self._probe: Callable[[str], bool] = adb_probe if adb_probe is not None \
+            else check_adb_valid
+        self._workers = WorkerCoordinator(parent=self)
         self._configure_window()
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 16, 16, 12)
@@ -48,8 +57,9 @@ class SettingsDialog(QDialog):
 
         intro = QLabel(
             "Absolute path to the ADB executable. Leave empty to save no "
-            "path. The desktop shell does not validate the path in this "
-            "stage — validation lands with device management (Stage 10).",
+            "path. Validation below is strictly user-initiated — it runs "
+            "one adb version probe in the background and never launches "
+            "anything on its own.",
             self)
         intro.setObjectName("secondaryText")
         intro.setWordWrap(True)
@@ -58,7 +68,8 @@ class SettingsDialog(QDialog):
         field_label = QLabel("A&DB path:", self)
         self._adb_edit = QLineEdit(self)
         self._adb_edit.setClearButtonEnabled(True)
-        self._adb_edit.setPlaceholderText("(not set — browse manually in a later stage)")
+        self._adb_edit.setPlaceholderText(
+            "(not set — type or paste the path to adb.exe)")
         self._adb_edit.setToolTip(
             "Point at adb.exe (e.g. a platform-tools directory). Saved to "
             "the engine config file on Apply.")
@@ -66,6 +77,20 @@ class SettingsDialog(QDialog):
         field_label.setBuddy(self._adb_edit)
         layout.addWidget(field_label)
         layout.addWidget(self._adb_edit)
+
+        validate_row = QHBoxLayout()
+        self._validate_button = button(
+            "&Validate path now", variant="secondary",
+            tooltip="Launch-probe the typed path (one adb version call, "
+                    "background worker; never on the GUI thread)",
+            accessible_name="Validate adb path")
+        self._validate_button.clicked.connect(self._validate)
+        self._validate_status = QLabel("", self)
+        self._validate_status.setObjectName("hintText")
+        self._validate_status.setWordWrap(True)
+        validate_row.addWidget(self._validate_button)
+        validate_row.addWidget(self._validate_status, 1)
+        layout.addLayout(validate_row)
 
         self._error_label = QLabel(self)
         self._error_label.setObjectName("hintText")
@@ -96,7 +121,7 @@ class SettingsDialog(QDialog):
     def _configure_window(self) -> None:
         self.setWindowTitle("Settings — V-Scanner")
         self.setModal(True)
-        self.setMinimumWidth(480)
+        self.setMinimumWidth(520)
         self.setAccessibleName("Settings dialog")
 
     # -- load / save ------------------------------------------------------- #
@@ -106,10 +131,50 @@ class SettingsDialog(QDialog):
         snapshot = self._config_service.load()
         self._snapshot = snapshot
         self._adb_edit.setText(snapshot.adb_path or "")
+        self._validate_status.setText("path not validated in this session")
 
     def editor_adb_path(self) -> Optional[str]:
         """The pending path in the editor (tests inspect the field state)."""
         return self._adb_edit.text().strip() or None
+
+    # -- validation (user-initiated, background worker) --------------------- #
+
+    def _validate(self) -> None:
+        """Launch-probe the currently typed path (worker, never startup)."""
+        raw = self._adb_edit.text().strip()
+        if not raw:
+            self._validate_status.setText(
+                "No path entered — nothing to validate")
+            return
+        if self._workers.is_pending("validate_adb"):
+            self._validate_status.setText(
+                "A validation probe is already running — wait for its "
+                "result")
+            return
+        self._validate_button.setEnabled(False)
+        self._validate_status.setText("validating — one adb version probe "
+                                      "is running in the background…")
+
+        def finish(valid: bool, exc: Optional[BaseException] = None) -> None:
+            # re-enabled in every case; invalid is an honest result
+            self._validate_button.setEnabled(True)
+            self._validate_status.setText(
+                "path is valid — a working adb executable"
+                if valid else
+                "path is NOT a launchable adb executable")
+
+        def sink() -> bool:
+            return bool(self._probe(raw))
+
+        started = self._workers.run(
+            "validate_adb", sink,
+            lambda result: finish(bool(result)),
+            lambda exc: finish(False, exc),
+        )
+        if not started:
+            self._validate_button.setEnabled(True)
+            self._validate_status.setText(
+                "validation refused — another probe is pending")
 
     def _apply(self) -> None:
         """Save through the ConfigService; typed failures show inline text."""

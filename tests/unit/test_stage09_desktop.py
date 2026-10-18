@@ -82,6 +82,14 @@ def qapp() -> Iterator[QApplication]:
         app = create_application([])
     assert app is not None
     yield app
+    # Deterministic teardown BEFORE interpreter shutdown: PySide6's static
+    # Qt cleanup aborts nondeterministically when leftover top-level
+    # QObjects are destroyed during finalization (Stage 10 harness found
+    # and fixed this; same hygiene here keeps the shared session clean).
+    app.processEvents()
+    for widget in list(app.topLevelWidgets()):
+        widget.deleteLater()
+    app.processEvents()
 
 
 @pytest.fixture()
@@ -112,7 +120,7 @@ class TestStartupAndLifecycle:
         assert any("Desktop shell ready" in text for text in texts)
         # Honest first-run state: no device discovery, no fabricated state.
         assert any("not configured yet" in text for text in texts)
-        assert any("not checked in this stage" in text for text in texts)
+        assert any("not checked" in text for text in texts)
 
     def test_missing_configuration_does_not_crash_startup(self, shell, config_service):
         assert not config_service.path.exists()

@@ -41,12 +41,15 @@ from vscanner.services.config import ConfigService
 
 from . import __version__, APP_NAME, APP_SUBTITLE
 from . import theme
+from .backend import DesktopBackend
+from .jobs_bridge_qt import QT_AVAILABLE, QtJobEventBridge
 from .screens import (
     build_dashboard,
     build_doctor,
     build_help_section,
     build_placeholder,
 )
+from .screens.devices import DeviceWorkspacePage
 from .sections import (
     INITIAL_SECTION_ID,
     SECTION_REGISTRY,
@@ -55,7 +58,7 @@ from .sections import (
     get_section,
 )
 from .settings_dialog import SettingsDialog
-from .widgets import NavRail, SectionHeader, button
+from .widgets import ErrorState, NavRail, SectionHeader, button
 
 __all__ = ["MainWindow"]
 
@@ -70,6 +73,7 @@ class MainWindow(QMainWindow):
         self,
         config_service: Optional[ConfigService] = None,
         *,
+        backend: Optional[DesktopBackend] = None,
         config_error: Optional[str] = None,
         host_details: bool = True,
         parent: Optional[QWidget] = None,
@@ -79,7 +83,8 @@ class MainWindow(QMainWindow):
         self._config_error = config_error
         self._host_details = host_details
         self._current_id: str = ""
-        self._job_bridge: Optional[Any] = None  # QtJobEventBridge (Stage 10 wiring)
+        self._backend: Optional[DesktopBackend] = backend
+        self._job_bridge: Optional[Any] = None  # QtJobEventBridge (Stage 10)
 
         self.setWindowTitle(f"{APP_NAME} — {APP_SUBTITLE}")
         self.setMinimumSize(theme.MIN_WINDOW_WIDTH, theme.MIN_WINDOW_HEIGHT)
@@ -91,6 +96,11 @@ class MainWindow(QMainWindow):
 
         self._build_shell()
         self._install_shortcuts()
+        if backend is not None:
+            # One shared delivery bridge for the whole session: the shell
+            # owns it (delivery-only; detached in closeEvent).
+            self._job_bridge = QtJobEventBridge()
+            self._job_bridge.attach(backend.manager())
         self.switch_to(INITIAL_SECTION_ID)
 
     # ------------------------------------------------------------------ #
@@ -124,7 +134,9 @@ class MainWindow(QMainWindow):
 
         status = QStatusBar(self)
         status.setObjectName("statusBar")
-        version_label = QLabel(f"v{__version__} — Stage 09 foundation", status)
+        version_label = QLabel(
+            f"v{__version__} — Stage 09 shell + Stage 10 device workspace",
+            status)
         version_label.setObjectName("statusVersion")
         status.addPermanentWidget(version_label)
         self.setStatusBar(status)
@@ -216,6 +228,9 @@ class MainWindow(QMainWindow):
         previous = self._current_id
         self._current_id = section_id
         self._nav.select_section(section_id)
+        activate = getattr(widget, "activate", None)
+        if callable(activate):
+            activate()  # per-section on-activation hook (e.g. one auto-discovery)
         self._header.configure(
             section.title,
             section.subtitle + (
@@ -248,9 +263,23 @@ class MainWindow(QMainWindow):
             def build_dashboard_view(_parent: QWidget) -> QWidget:
                 return build_dashboard(
                     self._config_service,
+                    open_devices=(
+                        (lambda: self.switch_to("devices"))
+                        if self._backend is not None else None),
                     config_error=self._config_error,
                     host_details=self._host_details)
             return build_dashboard_view
+        if section.section_id == "devices":
+            def build_devices_view(_parent: QWidget) -> QWidget:
+                if self._backend is None or self._job_bridge is None:
+                    return ErrorState(
+                        "Device workspace unavailable",
+                        "No engine configuration is wired in this launch, "
+                        "so device discovery cannot run. Fix the "
+                        "configuration and restart the desktop shell.")
+                return DeviceWorkspacePage(
+                    self._backend, self._job_bridge.hub, _parent)
+            return build_devices_view
         if section.section_id == "doctor":
             def build_doctor_view(_parent: QWidget) -> QWidget:
                 return build_doctor(host_details=self._host_details)
@@ -325,9 +354,16 @@ class MainWindow(QMainWindow):
         bridge.attach(event_source)
 
     def closeEvent(self, event) -> None:  # noqa: N802 (Qt caller convention)
-        """Detach owned job-bridge subscriptions, then accept the close."""
+        """Detach owned subscriptions, stop section-owned background work,
+        shut the job manager down with its grace period, then accept."""
         bridge = self._job_bridge
         if bridge is not None and bridge.attached:
             bridge.detach()
         self._job_bridge = None
+        for widget in list(self._section_root.values()):
+            shutdown = getattr(widget, "shutdown", None)
+            if callable(shutdown):
+                shutdown()
+        if self._backend is not None:
+            self._backend.shutdown_jobs()
         super().closeEvent(event)

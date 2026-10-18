@@ -1,24 +1,43 @@
-"""Dashboard skeleton (Stage 09 desktop foundation).
+"""Dashboard (Stage 10): honest engine/config/ADB readiness for the desktop.
 
-Honest startup readiness only: real config state (``ConfigService``) and
-real engine package state (``services.doctor``). No device discovery, no
-subprocess launches, no decorative numbers — a device-independent view that
-never fakes capability (Stage 09 mission §4/§12).
+What this page REALLY does (everything else is honestly declared absent):
+
+* Real configuration state through ``ConfigService`` (path saved or not,
+  unreadable config surfaced instead of swallowed).
+* Real engine package state (``services.doctor`` dependency report).
+* ADB availability is checked ONLY by an explicit user action: the probe
+  validates the configured executable with the shared engine check
+  (``services.adb.executable.check_adb_valid``) inside a background
+  worker — never at startup, never on the GUI thread. The states "not
+  checked / no path configured / invalid / validated" stay distinct.
+* A navigation action into the real device workspace (Stage 10). The
+  dashboard fabricates nothing about devices: no counts, no connection
+  state, no scan/history/security claims. Scanning, findings, reports,
+  monitoring, forensics, mirroring and demo data remain honest
+  future-stage placeholders (owned by Stages 11–12).
 """
 
 from __future__ import annotations
 
 import platform
-from typing import Optional
+from typing import Callable, Optional
 
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QHBoxLayout,
+    QLabel,
+    QSizePolicy,
+    QVBoxLayout,
+    QWidget,
+)
 
+from vscanner.services.adb.executable import check_adb_valid
 from vscanner.services.config import ConfigService
 from vscanner.services.doctor import collect_dependency_report
 
 from .. import __version__
-from ..theme import ERROR_COLOR
-from ..widgets import MetadataRow, Panel, StatusChip
+from .. import theme
+from ..workers import WorkerCoordinator
+from ..widgets import MetadataRow, Panel, StatusChip, button
 
 __all__ = ["build_dashboard"]
 
@@ -26,29 +45,30 @@ __all__ = ["build_dashboard"]
 def build_dashboard(
     config_service: Optional[ConfigService],
     *,
+    open_devices: Optional[Callable[[], None]] = None,
+    adb_probe: Optional[Callable[[str], bool]] = None,
     config_error: Optional[str] = None,
     host_details: bool = True,
 ) -> QWidget:
-    """Build the dashboard skeleton.
+    """Build the dashboard page.
 
-    ``config_error`` carries a prepared, truthful description when the config
-    file exists but is unreadable/invalid — the shell catches
-    ``ConfigError`` in production; tests inject failures through the service.
-
-    ``host_details=False`` renders a fully device/portable-independent page
-    (used when a host probe would be inappropriate — the shell decides; the
-    default ``True`` shows the honest runtime environment line).
+    ``open_devices`` routes the navigation button to the shell's device
+    workspace. ``adb_probe`` replaces the engine ADB launch-check in the
+    deterministic test harness; the probe never runs during construction —
+    checking is strictly user-initiated, exactly like the TUI settings
+    screen (Stage 05).
     """
     page = QWidget()
     outer = QVBoxLayout(page)
     outer.setContentsMargins(0, 0, 0, 0)
     outer.setSpacing(12)
 
-    outer.addWidget(_shell_status_panel())
+    outer.addWidget(_shell_status_panel(open_devices))
     outer.addWidget(_environment_panel(
         config_service, config_error, host_details))
+    outer.addWidget(_adb_panel(config_service, config_error, adb_probe))
     outer.addWidget(_packages_panel())
-    outer.addWidget(_adb_panel())
+    outer.addWidget(_boundaries_panel())
     outer.addStretch(1)
     page.setAccessibleName("Dashboard")
     return page
@@ -61,7 +81,7 @@ def build_dashboard(
 def _row(layout: QVBoxLayout) -> QHBoxLayout:
     row = QHBoxLayout()
     row.setContentsMargins(0, 0, 0, 0)
-    row.setSpacing(8)
+    row.setSpacing(theme.SPACING["s"])
     layout.addLayout(row)
     return row
 
@@ -72,22 +92,35 @@ def _heading(layout: QVBoxLayout, text: str) -> None:
     layout.addWidget(label)
 
 
-def _shell_status_panel() -> Panel:
+def _shell_status_panel(
+    open_devices: Optional[Callable[[], None]],
+) -> Panel:
     panel = Panel()
     layout = Panel.body_layout(panel)
     row = _row(layout)
     row.addWidget(StatusChip("ok"))
     ready = QLabel(
         f"Desktop shell ready — V-Scanner 3.0 {__version__} "
-        "(Stage 09 foundation)")
+        "(Stage 09 shell, Stage 10 device workspace)")
     ready.setObjectName("bodyText")
     row.addWidget(ready)
     hint = QLabel(
-        "Device operations, scanning, reports, and monitoring are delivered "
-        "by Stages 10–12. This page shows only what exists today.")
+        "Open the Device workspace to discover connected Android devices, "
+        "read their details and browse their installed apps. Scanning, "
+        "findings, reports, monitoring, forensics, mirroring and demo data "
+        "are later-stage sections and stay honest placeholders until then.")
     hint.setObjectName("hintText")
     hint.setWordWrap(True)
     layout.addWidget(hint)
+    if open_devices is not None:
+        actions = _row(layout)
+        open_button = button(
+            "Open Device workspace", variant="primary",
+            tooltip="Go to real device discovery and the installed-app "
+                    "inventory browser",
+            accessible_name="Open device workspace")
+        open_button.clicked.connect(open_devices)
+        actions.addWidget(open_button)
     return panel
 
 
@@ -100,34 +133,30 @@ def _environment_panel(
     layout = Panel.body_layout(panel)
     _heading(layout, "Environment readiness")
 
-    if config_error is not None:
-        error = QLabel(f"Configuration could not be read: {config_error}")
+    snapshot = None
+    shown_error: Optional[str] = config_error
+    if config_error is None and config_service is not None:
+        try:
+            snapshot = config_service.load()
+        except Exception as exc:  # corrupted config must never crash startup
+            shown_error = f"unexpected reader failure: {exc}"
+
+    if shown_error is not None:
+        error = QLabel(f"Configuration could not be read: {shown_error}")
         error.setObjectName("bodyText")
         error.setWordWrap(True)
-        error.setStyleSheet(f"color: {ERROR_COLOR}; background: transparent;")
+        error.setStyleSheet(
+            f"color: {theme.ERROR_COLOR}; background: transparent;")
         layout.addWidget(error)
-        config_value = "unreadable (see error above)"
+        config_value = "unreadable (see the error above)"
     else:
-        try:
-            snapshot = config_service.load() if config_service else None
-        except Exception as exc:  # corrupted config must never crash startup
-            config_error = f"unexpected reader failure: {exc}"
-            snapshot = None
-            error = QLabel(f"Configuration could not be read: {config_error}")
-            error.setObjectName("bodyText")
-            error.setWordWrap(True)
-            error.setStyleSheet(
-                f"color: {ERROR_COLOR}; background: transparent;")
-            layout.addWidget(error)
-            config_value = "unreadable (see error above)"
+        if config_service is None:
+            config_value = "no configuration service wired"
+        elif snapshot is not None and snapshot.has_path:
+            config_value = f"configured — ADB path saved ({snapshot.adb_path})"
         else:
-            if config_service is None:
-                config_value = "no configuration service wired"
-            elif snapshot is not None and snapshot.has_path:
-                config_value = f"configured — ADB path saved ({snapshot.adb_path})"
-            else:
-                config_value = (
-                    "not configured yet — set the ADB path in Settings (Ctrl+,)")
+            config_value = (
+                "not configured yet — set the ADB path in Settings (Ctrl+,)")
 
     layout.addWidget(MetadataRow("Configuration", config_value))
     layout.addWidget(MetadataRow(
@@ -141,6 +170,116 @@ def _environment_panel(
     return panel
 
 
+def _adb_panel(
+    config_service: Optional[ConfigService],
+    config_error: Optional[str],
+    adb_probe: Optional[Callable[[str], bool]],
+) -> Panel:
+    """ADB tool state — three honest buckets, check strictly user-initiated.
+
+    The saved path is read from the config (cheap, UI-thread safe); the
+    launch probe itself is a subprocess and therefore runs in a background
+    worker via :class:`~ui_desktop.workers.WorkerCoordinator` (deduped per
+    slot — pressing the button while a probe runs is refused).
+    """
+    panel = Panel()
+    layout = Panel.body_layout(panel)
+    _heading(layout, "ADB tool")
+
+    status_row = _row(layout)
+    chip = StatusChip("neutral", panel)
+    status_row.addWidget(chip)
+    status_value = QLabel("", panel)
+    status_value.setObjectName("secondaryText")
+    status_value.setWordWrap(True)
+    status_row.addWidget(status_value, 1)
+
+    # Saved path resolution (no probe at read time).
+    saved_path: Optional[str] = None
+    if config_service is not None and config_error is None:
+        try:
+            snapshot = config_service.load()
+        except Exception:
+            snapshot = None  # the config-read failure is already shown above
+        else:
+            if snapshot is not None and snapshot.has_path:
+                saved_path = snapshot.adb_path
+
+    if saved_path is None:
+        state_value = "no_path"
+    else:
+        state_value = "untested"
+
+    probe: Optional[Callable[[str], bool]] = \
+        adb_probe if adb_probe is not None else (
+            check_adb_valid if saved_path else None)
+    coordinator = WorkerCoordinator(parent=panel)
+
+    def render() -> None:
+        current = state_value
+        if current == "no_path":
+            chip.set_status("neutral")
+            status_value.setText(
+                "not checked — no ADB path is configured "
+                "(set one in Settings, Ctrl+,)")
+        elif current == "untested":
+            chip.set_status("neutral")
+            status_value.setText(
+                "not checked — a path is saved but not launch-probed here; "
+                "the check runs one adb version subprocess (press Check)")
+        elif current == "checking":
+            chip.set_status("info")
+            status_value.setText(
+                "checking — one adb version probe is running in the "
+                "background…")
+        elif current == "valid":
+            chip.set_status("ok")
+            status_value.setText(
+                f"validated — the saved executable launches and reports a "
+                f"version ({saved_path})")
+        else:  # invalid
+            chip.set_status("error")
+            status_value.setText(
+                f"invalid — the saved path did not launch a working adb "
+                f"({saved_path}); fix the path in Settings and check again")
+
+    def finish(ok: bool, _exc: Optional[BaseException] = None) -> None:
+        nonlocal state_value
+        # A probe failure is an honest result — never a crash, never a
+        # silent pass; the state stays invalid until the user re-checks.
+        state_value = "valid" if ok else "invalid"
+        render()
+
+    def run_check() -> None:
+        path = saved_path
+        if probe is None or not path:
+            return
+        if not coordinator.run(
+            "adb_check",
+            lambda: bool(probe(path)),
+            lambda result: finish(bool(result)),
+            lambda exc: finish(False, exc),
+        ):
+            return  # already checking (deduped); the run finishes visibly
+        render()
+
+    render()
+
+    actions = _row(layout)
+    if saved_path and probe is not None:
+        check_button = button(
+            "Check ADB availability", variant="secondary",
+            tooltip="One background adb version probe of the saved path "
+                    "(strictly user-initiated; never automatic)",
+            accessible_name="Check adb availability")
+        check_button.clicked.connect(run_check)
+        actions.addWidget(check_button)
+    panel.setProperty("adbState", state_value)
+    panel.setSizePolicy(QSizePolicy.Policy.Expanding,
+                        QSizePolicy.Policy.Maximum)
+    return panel
+
+
 def _packages_panel() -> Panel:
     panel = Panel()
     layout = Panel.body_layout(panel)
@@ -151,6 +290,13 @@ def _packages_panel() -> Panel:
     row.addWidget(MetadataRow(
         "Report", f"{len(report.packages) - len(missing)} of "
                   f"{len(report.packages)} installed"))
+    row.addWidget(MetadataRow(
+        "Desktop toolkit",
+        "PySide6 (Qt) available" if _pyside_ok() else
+        "PySide6 not importable — the desktop UI needs the 'desktop' extra"))
+    row.addWidget(MetadataRow(
+        "Desktop extra", "installed (pip install -e '.[desktop]')"
+        if _pyside_ok() else "missing"))
     row.addWidget(StatusChip("ok" if not missing else "error"))
     for package in report.packages:
         state = "installed" if package.installed else "not installed"
@@ -166,19 +312,24 @@ def _packages_panel() -> Panel:
     return panel
 
 
-def _adb_panel() -> Panel:
+def _boundaries_panel() -> Panel:
     panel = Panel()
     layout = Panel.body_layout(panel)
-    _heading(layout, "ADB tool")
-    row = _row(layout)
-    row.addWidget(MetadataRow(
-        "Status", "not checked in this stage"))
-    row.addWidget(StatusChip("neutral"))
-    note = QLabel(
-        "The desktop shell never launches processes on its own; ADB "
-        "validation and provisioning arrive with device management "
-        "(Stage 10).")
-    note.setObjectName("hintText")
-    note.setWordWrap(True)
-    layout.addWidget(note)
+    _heading(layout, "What later stages will add")
+    for title, stage in (
+        ("Scanning & findings", "Stage 11"),
+        ("Reports & history", "Stage 11"),
+        ("Live monitoring, forensics, mirroring, demo data", "Stage 12"),
+    ):
+        layout.addWidget(MetadataRow(
+            title, f"planned for {stage} — nothing is scanned, collected "
+            "or shown here"))
     return panel
+
+
+def _pyside_ok() -> bool:
+    try:
+        import PySide6  # noqa: F401
+    except ImportError:
+        return False
+    return True

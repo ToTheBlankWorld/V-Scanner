@@ -64,8 +64,10 @@ SECTION_REGISTRY: tuple[DesktopSection, ...] = (
     DesktopSection(
         "devices", "Device workspace",
         "Device discovery, info, and inventory",
-        "future", "Stage 10",
-        "Device workspace ships in Stage 10. No device capabilities are offered yet.",
+        "live", "",
+        "Discover connected Android devices, inspect their details and "
+        "browse their installed apps (refresh runs on demand; nothing "
+        "probes automatically before you open it).",
     ),
     DesktopSection(
         "scan", "Scanning & findings",
