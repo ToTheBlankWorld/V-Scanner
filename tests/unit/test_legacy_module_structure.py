@@ -52,11 +52,15 @@ class TestAdbConfigConsumers:
 
         assert adb_setup.load_adb_config() is None
 
-    def test_malformed_config_loads_to_none(self, isolated_config):
+    def test_malformed_config_loads_to_none(self, isolated_config, capsys):
+        """R-02 seed behavior retained: load returns None on malformed data,
+        but Stage 03 adds a VISIBLE warning - never a silent swallow."""
         import adb_setup
 
         isolated_config.write_text("{{{broken", encoding="utf-8")
         assert adb_setup.load_adb_config() is None
+        console_out = capsys.readouterr().out
+        assert "adb_config.json" in console_out or "config" in console_out.lower()
 
     def test_config_with_unverifiable_path_is_rejected(self, isolated_config):
         import adb_setup
@@ -66,27 +70,39 @@ class TestAdbConfigConsumers:
 
     def test_save_then_load_roundtrip(self, isolated_config, monkeypatch):
         import adb_setup
+        from vscanner.services.config import ConfigService
 
-        # Pretend the saved binary is a valid ADB executable.
+        # Pretend the saved binary is a valid ADB executable (the legacy
+        # adapter validates through its own seam; monkeypatch target unchanged).
         monkeypatch.setattr(adb_setup, "check_adb_valid", lambda path: True)
         assert not isolated_config.exists()
         adb_setup.save_adb_config(r"C:\platform-tools\adb.exe")
         data = json.loads(isolated_config.read_text(encoding="utf-8"))
         assert data["adb_path"] == r"C:\platform-tools\adb.exe"
         assert adb_setup.load_adb_config() == r"C:\platform-tools\adb.exe"
+        # The service layer adds the schema envelope on every write (R-02);
+        # typed ConfigError propagation is asserted against the authoritative
+        # loader in test_known_defects. Unknown schema versions surface as a
+        # visible warning here and still return None (compat contract).
+        assert data["schema_version"] == 1
+        isolated_config.write_text(
+            json.dumps({"schema_version": 99, "adb_path": "x"}), encoding="utf-8"
+        )
+        assert adb_setup.load_adb_config() is None
 
     def test_main_module_loader_uses_existing_config(self, isolated_config, monkeypatch):
         main_module.load_adb_config()  # missing file → None (no crash)
         isolated_config.write_text(json.dumps({"adb_path": r"C:\x\adb.exe"}), encoding="utf-8")
-        monkeypatch.setattr(main_module, "check_adb_valid", lambda path: True)
+        monkeypatch.setattr(adb_setup, "check_adb_valid", lambda path: True)
         assert main_module.load_adb_config() == r"C:\x\adb.exe"
 
 
 class TestLegacyTangleEvidence:
-    def test_duplicate_adb_path_global(self):
-        """main.py defines ADB_PATH twice (lines 34 and 65 at audit time)."""
+    def test_single_adb_path_global(self):
+        """R-02 remediated (Stage 03): main.py defines ADB_PATH exactly once
+        (the duplicate at audit line 65 was removed with the shadowed defs)."""
         source = (CLI_DIR / "main.py").read_text(encoding="utf-8")
-        assert source.count("ADB_PATH = None") >= 2
+        assert source.count("ADB_PATH = None") == 1
 
     def test_interactive_setup_flow_requires_console(self):
         """Documents that interactive_adb_setup is console-driven — the reason

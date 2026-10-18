@@ -13,12 +13,14 @@ Severity scale: CRIT (data corruption / destructive semantics), HIGH (dishonest 
 - **Fix (owned by Stage 03):** when legacy menu is frozen into the shim, keep one definition; delete the first occurrence in the same commit that re-wires legacy onto services; a grep-lint rule (`ruff F811` style duplicate-def detection expanded, custom check optional) asserts no duplicate function names in `cli/**`.
 - **Tests:** import module → assert symbol count/function identity; legacy menu behavior test unchanged (4 options + back).
 - **Verification stage:** 03 (with legacy wiring).
+- **Stage 03 status (2026-10-18): REMEDIATED.** Both byte-identical copies were AST-diff-verified, then exactly one definition was restored to `cli/main.py` (dead first copy deleted; the shadowed second copy lost in the edit was re-added verbatim). Verified: `admin_operations_menu` appears exactly once, no duplicate top-level defs remain in the module (`tests/unit/test_import_architecture.py` guards the engine side; the R-01 regression assertions in `test_known_defects.py` lock the legacy side). Menu behavior (4 options + back) preserved byte-for-byte.
 
 ## R-02 · Shadowed ADB-config functions in `main.py`
 - **Severity:** MED. **Evidence:** `main.py:21` imports `load_adb_config, save_adb_config, get_adb_path, check_adb_valid` from `adb_setup`; lines **38–62** redefine `load_adb_config`/`save_adb_config` locally, with bare `except:` swallowing config errors ("except: pass" at line 49).
 - **Impact:** two divergent config implementations; silent failure modes on malformed `adb_config.json`; confusing global ADB_PATH mutation (lines 34, 65 duplicated `ADB_PATH = None`).
 - **Fix (Stage 03):** legacy shim delegates to `services/config.py`; new-engine config has explicit typed errors (no bare excepts, lint-enforced).
 - **Tests:** config migration test (existing `cli/adb_config.json` → new schema, first-run); malformed-file test returns honest error, not silence.
+- **Stage 03 status (2026-10-18): REMEDIATED (two-layer design).** Authoritative loader = `vscanner.services.config.ConfigService` (strict; raises typed `ConfigError`/`ConfigSchemaOutdated`; atomic writes; legacy `{"adb_path": ...}` files accepted as v1). The legacy `cli/adb_setup.py` shim now delegates to it and keeps its exact function surface; one deliberate behavior upgrade documented: a malformed config prints a visible warning and returns None (legacy silent swallow removed) while the return contract `None` on failure is unchanged for callers. `main.py` no longer redefines `load_adb_config`/`save_adb_config` (local defs + bare-`except` paths deleted; `ADB_PATH` defined once). Stage 02 tests updated in the same commit: the R-01/R-02 characterization/xfail pairs collapsed to fixed-behavior assertions (regression-locked in `test_known_defects.py` + `test_legacy_module_structure.py`).
 
 ## R-03 · Forensics extractors calling missing method (`_extract_all_dbs_from_dir`)
 - **Severity:** HIGH-as-latent-crash (functionality-specific). **Evidence:** `cli/digital_forensics.py` — the four extractors `extract_call_logs` (≈line 506), `extract_contacts` (≈line 549), `extract_messages` (≈line 590) and `extract_browser_history` (≈line 638) each invoke `self._extract_all_dbs_from_dir(...)`, which has **no definition anywhere in the module** (global grep confirmed). These functions are unreachable from the menu (menu exposes ops 1–8 only), so the crash is dormant.
@@ -55,6 +57,7 @@ Severity scale: CRIT (data corruption / destructive semantics), HIGH (dishonest 
 - **Impact:** first-run confusion on clean environments; accidental local-artifact commits later.
 - **Fix (Stage 02 hygiene + Stage 03 migration):** untrack the file in Stage 02 alongside R-09 (`git rm --cached`, template `adb_config.example.json`, `.gitignore` entry); in Stage 03 the config service imports a pre-existing copy into the user dir (A-07) and ignores the repo path. Removal uses `git rm --cached` — a normal commit, no history rewrite.
 - **Tests:** fresh-clone simulation (env home override) yields config-free first-run path; migration test at Stage 03.
+- **Stage 03 status (2026-10-18): REMEDIATED (migration portion).** `ConfigService.import_legacy_config` / `import_repo_legacy_config` implement first-run migration (malformed legacy input is never imported — target stays untouched; unknown `schema_version` is guarded). Tests cover both branches plus the fresh-clone absence case (fabricated repo root). The repo-local untracked copy of `cli/adb_config.json` is still present locally and untouched (R-15 hygiene rule: no discards, no user-file edits).
 
 ## R-09 · Generated Android build report tracked in git (`android/build/reports/problems/problems-report.html`)
 - **Severity:** LOW. **Evidence:** tracked file within ignored pattern scope (`android/build/`), committed before the rule. [VERIFIED via `git ls-files`]
@@ -67,12 +70,17 @@ Severity scale: CRIT (data corruption / destructive semantics), HIGH (dishonest 
 - **Impact:** quoting/injection-prone pattern; also inconsistent envs (pip target ambiguity).
 - **Fix (policy + implementation):** New engine: **zero** `shell=True` anywhere (AdbClientProtocol adapter requirement + lint check); legacy `setup.py` behavior is deprecated outright in Stage 14 when replaced by the installer. From Stage 03, the engine's own subprocess paths use argument-list invocation only.
 - **Tests:** lint assertion (no `shell=True` under `vscanner/`); pip-install path test runs via list-args with quoted path.
+- **Stage 03 status (2026-10-18): ENGINE PORT DONE.** Every `vscanner/` module is AST-scanned by `tests/unit/test_import_architecture.py`: zero `shell=True`, zero `pip`/`ensurepip` imports, argument-list subprocess only (`SubprocessAdbClient`; `tests/unit/test_services_adb.py` proves the client by launching `sys.executable` with list-argv payloads — R-07 groundwork evidence). Legacy `cli/setup.py` is NOT touched (deprecated, replaced at Stage 14 per the plan).
 
 ## R-11 · Tool-download validation & archive extraction safety
 - **Severity:** MED→HIGH (supply-chain surface). **Evidence:** `cli/tools_manager.py:30–93` — URLs unverified (GitHub latest-release API, fallback `scrcpy-2.4-win64-v4.zip` — a static versioned asset known to drift); `extract_windows_zip`/`extract_unix_tar` (140–149) call `extractall` without member path checks (zip-slip/tar traversal possible vs TOOLS_DIR); no checksums.
 - **Impact:** malicious/compromised upstream or MITM could drop executables; forged archives could write outside tools dir.
 - **Fix (Stage 03):** pinned release-manifest (`tools_manifest.json`: tool, version, sha256, URL mirrors) shipped with app and updatable only by user action; verify checksum-before-extract; zipfile/tar extraction with explicit member path validation (reject `..`, absolute paths, symlinks); `tarfile.extractall(filter='data')` where Python ≥ 3.12, manual equivalent otherwise; over HTTPS with verified TLS (urlopen default) noted in docs.
 - **Tests:** checksum mismatch rejection; traversal-bomb archive rejection (fixture archives); version-pin fallback test (API unresponsive → pinned manifest).
+- **Stage 03 status (2026-10-18): REMEDIATED (engine + legacy hardening).**
+  - Engine: `vscanner/services/tools/` ships a pinned manifest (`manifest.py`), member/link-validated safe extractors (`_extraction.py`), and `ToolProvisioningService` (`provisioning.py`) — download to `.staging`, checksum-verify-when-pinned, validate → extract → atomic move; any failure cleans staging and reports `cleanup_done=True`. No fabricated fallback URL exists anymore: pinned Google canonical links for platform-tools; scrcpy resolves ONLY via the live GitHub API and fails with a typed actionable `ProvisioningError` otherwise (stale v2.4 asset intentionally NOT replaced — no unverifiable guessed assets).
+  - Legacy: `extract_windows_zip`/`extract_unix_tar` in `cli/tools_manager.py` now validate members (absolute, drive-letter, `..`, and anchored-realpath containment) and use `filter='data'` (PEP 706) with pre-3.12 fallback (validation carries the guarantee there); the stale v2.4 fallback URL was deleted (`get_scrcpy_download_url` returns None on API/asset failure → actionable message, setup aborts) and a regression test locks the URL pattern out of the module.
+  - Documented characteristic kept: legacy provisioning still keeps the downloaded archive on failure (parity rule — production behavior must not drift in Stage 03); the failure-cleanup story is the engine's staged install.
 
 ## R-12 · Sensitive data in logs, reports and forensics outputs
 - **Severity:** HIGH. **Evidence:** Forensics WiFi extraction writes `wpa_supplicant.conf` **in cleartext incl. `psk=`** to user-visible text file (`digital_forensics.py:781–806`); device identifiers (IMEI/IMSI paths, `get_full_device_info`) flow into console panels and (future) logs unredacted; logcat dumps may contain SMS/app message bodies.
@@ -91,6 +99,7 @@ Severity scale: CRIT (data corruption / destructive semantics), HIGH (dishonest 
 - **Impact:** mutating user environments without consent; offline startup errors; bloats envs.
 - **Fix (Stage 03):** new-engine `doctor` service reports only (SC-11); explicit `install-doctor-fixes` command opt-in; legacy behavior unchanged until 16 (documented as accepted risk in PROGRESS per-stage note).
 - **Tests:** doctor report correctness; no implicit pip call test (subprocess monkeypatch counts zero unless explicitly invoked).
+- **Stage 03 status (2026-10-18): REMEDIATED (new-engine surface).** `vscanner/services/doctor.py` is report-only by construction: import-probe package checks (no side effects), tool status reflection (probe failures degrade to honest NOT_FOUND notes), zero pip/ensurepip imports (AST-locked in `test_import_architecture.py`), and it is constructible with no provisioning service at all. The legacy `dependency_checker.py` auto-pip remains until Stage 16 (accepted-risk disposition unchanged).
 
 ## R-15 · Bare `except:` usage (silent failure class)
 - **Severity:** MED. **Evidence:** multiple — `main.py` config loaders, `scanner.py` sensor fallbacks and hardware paths, `digital_forensics.py` parsers. Loosely counted ≥ 25 sites.
@@ -100,6 +109,7 @@ Severity scale: CRIT (data corruption / destructive semantics), HIGH (dishonest 
 
 ## R-16 · Scrcpy pinned-fallback URL drift (informational — see R-11)
 - Covered under R-11; verified live release sanity is part of Stage 03 acceptance (provisioning smoke test against GitHub API, recorded in PROGRESS notes).
+- **Stage 03 note (2026-10-18):** with the fallback removed entirely (R-11), drift is structurally impossible; the live-API sanity check was executed once during Stage 03 (network was touched only by this manual smoke — never by the test suite) and is recorded in `STAGE_03_IMPLEMENTATION_REPORT.md`.
 
 ---
 

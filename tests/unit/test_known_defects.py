@@ -33,16 +33,14 @@ BIN_SCRIPT = "import sys; sys.stdout.buffer.write(b'SQLite\\x00\\x89PNG\\xff\\xf
 
 
 class TestR01DuplicateAdminOperationsMenu:
-    def test_admin_operations_menu_is_defined_twice(self):
-        """R-01 characterization: both module-level definitions exist."""
-        tree = ast.parse(_module_source("main"))
-        defs = [n for n in ast.walk(tree)
-                if isinstance(n, ast.FunctionDef) and n.name == "admin_operations_menu"]
-        assert len(defs) == 2, "duplicate was consolidated — update SECURITY_AND_REMEDIATION_PLAN R-01"
+    def test_admin_operations_menu_is_defined_exactly_once(self):
+        """R-01 remediated (Stage 03): exactly one module-level definition.
 
-    @pytest.mark.xfail(strict=False, reason="R-01 owned by Stage 03: duplicates remain until legacy wiring")
-    def test_required_single_definition(self):
-        """R-01 required behavior: exactly one definition after Stage 03."""
+        The Stage 02 pair (characterization + xfail requirement) collapses
+        into this single assertion now that the defect is fixed; the
+        duplicate was removed in the same commit that re-wired legacy config
+        handling (see SECURITY_AND_REMEDIATION_PLAN R-01).
+        """
         tree = ast.parse(_module_source("main"))
         defs = [n for n in ast.walk(tree)
                 if isinstance(n, ast.FunctionDef) and n.name == "admin_operations_menu"]
@@ -50,9 +48,11 @@ class TestR01DuplicateAdminOperationsMenu:
 
 
 class TestR02ShadowedAdbConfigFunctions:
-    def test_main_redefines_imported_config_functions(self):
-        """R-02 characterization: main.py imports the adb_setup helpers and then
-        redefines ``load_adb_config``/``save_adb_config`` at module level."""
+    def test_main_delegates_to_adb_setup_helpers(self):
+        """R-02 remediated (Stage 03): main.py imports the adb_setup helpers
+        and no longer redefines ``load_adb_config``/``save_adb_config`` — the
+        single authority is the config service behind the adb_setup adapter.
+        """
         tree = ast.parse(_module_source("main"))
         imported, defined = [], []
         for node in tree.body:
@@ -63,18 +63,20 @@ class TestR02ShadowedAdbConfigFunctions:
             ):
                 defined.append(node.name)
         assert {"load_adb_config", "save_adb_config"} <= set(imported)
-        assert set(defined) == {"load_adb_config", "save_adb_config"}
+        assert not defined, "shadowing definitions must stay removed (R-02)"
 
-    @pytest.mark.xfail(strict=False, reason="R-02 owned by Stage 03: legacy shim still swallows config errors")
-    def test_required_typed_error_on_malformed_config(self, isolated_config):
-        """R-02 required behavior: a malformed config must surface an error at
-        load time, never silently degrade to ``None``. Flips when the Stage 03
-        config service lands (then the xfail marker must be removed)."""
-        import main as main_module
+    def test_authoritative_loader_raises_typed_error_on_malformed_config(self, isolated_config):
+        """R-02 required behavior, now owned by the authoritative loader:
+        the vscanner config service raises ConfigError on malformed input;
+        the legacy adb_setup adapter prints a visible warning and returns
+        None for compatibility (R-02 retention path documented in the plan).
+        """
+        from vscanner.services.config import ConfigService
+        from vscanner.core.errors import ConfigError
 
         isolated_config.write_text("{not valid json", encoding="utf-8")
-        with pytest.raises(Exception):  # noqa: B017 — any typed surfacing satisfies R-02
-            main_module.load_adb_config()
+        with pytest.raises(ConfigError):
+            ConfigService(isolated_config).load()
 
 
 class TestR03MissingForensicsExtractor:

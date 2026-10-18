@@ -1,0 +1,9 @@
+# V-Scanner 3.0 — thin shim (Stage 03).
+#
+# The authoritative dependency table now lives in pyproject.toml ([project]):
+# the engine needs exactly the three proven runtime deps (rich, click,
+# jinja2). System tools (ADB, scrcpy) are provisioned or installed
+# separately — see cli/requirements.txt legacy notes.
+#
+# Legacy install path, kept working unchanged: cli/requirements.txt.
+-e .

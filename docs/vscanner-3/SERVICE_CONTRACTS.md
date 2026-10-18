@@ -52,7 +52,7 @@ Legend for each contract: **Inputs/Validation · Returns · Errors · Blocking? 
 
 | Operation: `analyze_single_app(package: str, config: ScanConfiguration)` / `scan_full_device(request: ScanRequest)` |
 |---|
-| Inputs | Package validated regex `^[a-z0-9._+]+$` plus existence check (`DeviceNotConnected`/not-installed → error with packagist hint). Scan request validated (`include_system`/`deep` flags). |
+| Inputs | Package validated regex `^[a-z0-9._+]+$` plus existence check (`DeviceNotConnected`/not-installed → error with packagist hint). Scan request validated (`include_system`/`deep` flags). **Amendment (Stage 03):** the implemented validator is `^[A-Za-z0-9._][A-Za-z0-9._+-]*$` (max 255 chars) — a documented deviation: real Android package IDs contain `-` and uppercase (e.g. `org.fdroid.FDroid`, `com.example.some-app`), which the planned charset rejected. |
 | Returns | `JobHandle` → events; on success `ScanResultBundle` (single app = one `AppScanResult`). |
 | Errors | Scheduled via job: `AdbCommandError`, `ScanInterrupted`, `JobCancelRequested`. |
 | Blocking? | Job-scoped; UI never blocks. |

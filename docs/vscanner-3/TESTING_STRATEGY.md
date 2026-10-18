@@ -30,14 +30,17 @@ Organization note: the smallest structure fit — `tests/unit` + `tests/integrat
 # Run the whole suite (no device, no network, no root):
 python -m pytest
 
-# Coverage of the legacy CLI package:
-python -m pytest --cov=cli --cov-report=term
+# Coverage of the legacy CLI package AND the engine:
+python -m coverage run -m pytest; python -m coverage report --include="cli/*,vscanner/*"
 
-# Lint (new code only — cli/ excluded until its stages migrate):
-python -m ruff check .
+# Lint (new code + engine; cli/ excluded until its stages migrate):
+python -m ruff check vscanner tests
 
-# Type check (scoped to tests, see §5):
+# Type check (tests + engine, legacy followed "silently", see §5):
 python -m mypy
+
+# Byte-compilation of every legacy module + engine package:
+python -m compileall -q vscanner cli tests
 
 # Python syntax validation of all legacy modules (also asserted by tests/integration/test_syntax_baseline.py):
 python -m pytest "tests/integration/test_syntax_baseline.py"
@@ -53,51 +56,63 @@ python -m pytest "tests/integration/test_syntax_baseline.py"
 - **Machine-specific config:** `isolated_config` fixture repoints both legacy config loaders to a temp file; tests never read the developer's real `cli/adb_config.json`.
 - Hard rule inherited by later stages: **no test may execute real ADB administrative (uninstall/open/force-stop) commands, real downloads, or read/write production device-data paths.**
 
-## 5. Type-check scope and lint baseline (Stage 02 decision records)
+## 5. Type-check scope and lint baseline (Stage 02 decision records; Stage 03 update)
 
-- **mypy** runs on `tests/` only with `follow_imports = "silent"`: test code themselves must be sound, while errors inside the legacy `cli/` modules (untyped, ~3.3k statements with structural defects scheduled for remediation R-10/R-15) are suppressed until each module migrates. When `vscanner/core/` appears in Stage 03, its strict config is added there (T-07).
-- **Ruff** selects a minimal fixable set (`E9/F63/F7/F82/E722/F811/F841/B006/B015/B018`) for new code, `cli/` and `android/` excluded until migrated. Baseline status: **all checks pass**.
-- **Syntax validation** compiles all 11 legacy modules in CI-visible test output.
+- **mypy** since Stage 03 runs on `files = ["tests", "vscanner"]` (46 source files, zero issues). Legacy `cli/` imports are followed "silently": errors inside legacy modules stay suppressed until each module migrates, while unresolved imports and all new-code type defects surface. Target: **zero errors in the engine at every stage** — Stage 03 delivered clean (`Success: no issues found in 46 source files`).
+- **Ruff** selects a minimal fixable set (`E9/F63/F7/F82/E722/F811/F841/B006/B015/B018`), `target-version = "py310"`, `cli/` and `android/` excluded until migrated. Baseline status: **all checks pass** across `vscanner` + `tests`.
+- **Syntax validation** compiles all 11 legacy modules plus the full engine package (`compileall` green for `vscanner cli tests`).
 
-## 6. Current coverage result (honest, Stage 02)
+## 6. Current coverage result (honest, re-measured at Stage 03)
+
+Stage 02 measured cli-only TOTAL 20%. Stage 03 re-measured over `cli` + the new engine (`--include="cli/*,vscanner/*"`):
 
 | Module | Statements | Missed | Coverage |
 |---|---:|---:|---:|
-| permissions.py | 63 | 0 | 100% |
-| report_generator.py | 95 | 7 | 93% |
-| adb_setup.py | 81 | 50 | 38% |
-| tools_manager.py | 256 | 161 | 37% |
-| scanner.py | 1033 | 822 | 20% |
-| ui_styles.py | 144 | 116 | 19% |
-| dependency_checker.py | 75 | 59 | 21% |
-| auto_setup.py | 34 | 26 | 24% |
-| digital_forensics.py | 588 | 523 | 11% |
-| main.py | 983 | 925 | 6% |
-| **TOTAL** | **3352** | **2689** | **20%** |
+| vscanner/core/kb/permissions.py | 63 | 0 | 100% |
+| vscanner/core/models.py | 293 | 5 | 98% |
+| vscanner/core/redact.py | 25 | 1 | 96% |
+| vscanner/core/errors.py | 51 | 4 | 92% |
+| vscanner/services/reports/service.py | 98 | 2 | 98% |
+| vscanner/services/config.py | 90 | 7 | 92% |
+| vscanner/services/doctor.py | 45 | 3 | 93% |
+| vscanner/services/scanning/* (3 modules) | 209 | 16 | ~93% |
+| vscanner/services/adb/* (4 modules) | 181 | 44 | ~76% |
+| vscanner/services/tools/provisioning.py | 171 | 33 | 81% |
+| vscanner/services/tools/_extraction.py | 45 | 17 | 62% |
+| vscanner/services/registry.py | 61 | 17 | 72% |
+| cli/main.py | 926 | 883 | 5% |
+| cli/scanner.py | 1033 | 775 | 25% |
+| cli/tools_manager.py | 282 | 165 | 41% |
+| cli/adb_setup.py | 80 | 46 | 42% |
+| cli/report_generator.py | 95 | 7 | 93% |
+| cli/permissions.py (shim) | 7 | 1 | 86% |
+| **TOTAL (cli + vscanner)** | **4679** | **2770** | **41%** |
 
-Interpretation: the pure analysis/decision layers are well anchored (the exact layers Stage 03 extracts), while interactive menus and rich-UI paths are not yet exercised — that coverage arrives with TUI/desktop service decomposition (Stages 05–12), not by writing brittle UI tests against legacy print flows. Do **not** claim "good coverage" from the 20% number; claim the anchored surfaces instead.
+Interpretation: the engine is well anchored (models/KB/redaction/reports/config ≥ 92%; surgery-grade anchors on every service). Legacy interactive/rich-UI paths remain uncovered by design decision (that coverage arrives with service decomposition in Stages 04–12, not by writing brittle UI tests against legacy print flows). Do **not** flatten the 41% number into a quality claim; cite the per-engine anchors.
 
-## 7. Stage 02 suite facts
+## 7. Suite facts (Stage 02 → Stage 03)
 
-- **106 passed, 7 xfailed, 0 skipped** (pytest 9.0.3, Python 3.12, Windows).
-- Runtime < 2 s; no device, no network, no root; all artifacts under pytest temp dirs.
-- All 11 legacy modules byte-compile (`test_syntax_baseline.py`).
+- Stage 02: **106 passed, 7 xfailed, 0 skipped** (9 files). Stage 03: **276 passed, 4 xfailed, 0 skipped** (17 test files), runtime < 2 s.
+- No device, no network, no root; all artifacts under pytest temp dirs; one deterministic R-07 proof spawns `sys.executable` with list-argv (never a shell string).
+- All 11 legacy modules + the whole engine byte-compile (`compileall` green).
 
 ## 8. Known expected failures (strict xfails, all mapped to remediation rows)
 
 `xfail_strict` is ON: when remediation flips behavior, the XPASS becomes a hard failure and the stage must remove the marker and update the plan row.
 
+**Remaining xfails (Stage 03 status: R-01/R-02/R-11 flipped → markers removed, tests converted to fixed-behavior assertions in the same commit; see SECURITY_AND_REMEDIATION_PLAN Stage 03 status bullets):**
+
 | Test | Defect | Owning stage |
 |---|---|---|
-| `TestR01...::test_required_single_definition` (duplicate `admin_operations_menu`) | R-01 | 03 |
-| `TestR02...::test_required_typed_error_on_malformed_config` | R-02 | 03 |
-| `TestTarExtraction::test_required_tar_traversal_prevention` | R-11 | 03 |
 | `TestR04...::test_no_sensor_data_means_no_invented_rows` | R-04 | 08 |
 | `TestR05...::test_failed_detection_must_not_report_root` | R-05 | 08 |
 | `TestR06...::test_credential_patterns_are_actually_applied` | R-06 | 08 |
 | `TestR07...::test_requirement_byte_safe_binary_extraction` | R-07 | 08 |
 
-Characterization-only defect records (passing tests that document current buggy behavior, never bless it): R-01 dup-definition count, R-02 redefinition map, R-03 silent `extract_call_logs` failure, R-04 fabricated sensor dict equality, R-05 optimistic `is_rooted is True`, R-06 "patterns present but zero usages", R-07 byte-corruption mechanism, R-10 `shell=True` presence, tools-manager leftover-archive cleanup gap, stale scrcpy v2.4 fallback URL.
+Flipped at Stage 03 (now passing, regression-locked):
+- R-01: `TestR01...::test_admin_operations_menu_is_defined_exactly_once` (Stage 02 pair merged into one fixed-behavior test).
+- R-02: `TestR02...::test_main_delegates_to_adb_setup_helpers` + `test_authoritative_loader_raises_typed_error_on_malformed_config` (retargeted to the engine's `ConfigService`; the legacy adapter's non-raising None contract is separately pinned in `test_legacy_module_structure.py`).
+- R-11: `TestTarExtraction::test_tar_traversal_member_rejected_after_hardening` (+ new zip-traversal and symlink-rejection tests; the Stage 02 escape characterization and stale-fallback characterization converted to hardened-behavior assertions with a v2.4-URL regression lock).
 
 ## 9. Guidance for adding tests (Stages 03–16)
 

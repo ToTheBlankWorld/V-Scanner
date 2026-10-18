@@ -30,38 +30,7 @@ from digital_forensics import show_forensics_menu
 
 console = Console()
 
-# Store ADB path globally
-ADB_PATH = None
-CONFIG_FILE = os.path.join(os.path.dirname(__file__), "adb_config.json")
-
-
-def load_adb_config() -> Optional[str]:
-    """Load saved ADB path from config file."""
-    try:
-        if os.path.exists(CONFIG_FILE):
-            with open(CONFIG_FILE, 'r') as f:
-                config = json.load(f)
-                saved_path = config.get("adb_path")
-                
-                # Verify the saved path still exists and is valid
-                if saved_path and check_adb_valid(saved_path):
-                    return saved_path
-    except:
-        pass
-    
-    return None
-
-
-def save_adb_config(adb_path: str):
-    """Save ADB path to config file."""
-    try:
-        config = {"adb_path": adb_path}
-        with open(CONFIG_FILE, 'w') as f:
-            json.dump(config, f, indent=2)
-    except Exception as e:
-        console.print(f"[yellow]Warning: Could not save ADB config: {e}[/yellow]")
-
-# Store ADB path globally
+# Store ADB path globally (single definition — R-02 duplicate removed).
 ADB_PATH = None
 
 
@@ -751,6 +720,9 @@ def screen_share(device: str):
         console.print("[dim]Ensure ADB connection is active and device is responding.[/dim]")
 
 
+# NOTE (R-01): admin_operations_menu keeps exactly one module-level definition.
+# The pre-existing duplicate copy (byte-identical, shadowed by this one) was
+# removed so future edits cannot silently vanish into a dead first definition.
 def admin_operations_menu(device: str):
     """Admin operations submenu."""
     while True:
@@ -1219,57 +1191,6 @@ def display_all_sensors(device: str):
     except Exception as e:
         console.print(f"[red]❌ Error getting sensor values: {str(e)[:100]}[/red]")
         console.print("[dim]Ensure ADB connection is active and device has sensors.[/dim]")
-
-
-def admin_operations_menu(device: str):
-    """Admin operations submenu."""
-    while True:
-        console.print("\n" + "="*50)
-        console.print("[bold cyan]⚙️  Admin Operations[/bold cyan]")
-        console.print("="*50 + "\n")
-        
-        console.print("[1] 🗑️  Uninstall App")
-        console.print("[2] ▶️  Open/Launch App")
-        console.print("[3] ⏹️  Force Stop App")
-        console.print("[4] 🔙 Back to Main Menu")
-        
-        choice = console.input("\n[bold]Select option (1-4): [/bold]")
-        
-        if choice == '1':
-            package = select_app_for_admin_op(device)
-            if package:
-                adb = get_adb_interface(device)
-                console.print(f"\n[bold cyan]🗑️  Uninstalling {package}...[/bold cyan]")
-                if adb.uninstall_app(package):
-                    console.print(f"[bold green]✓ Successfully uninstalled {package}[/bold green]")
-                else:
-                    console.print(f"[bold red]✗ Failed to uninstall {package}[/bold red]")
-        
-        elif choice == '2':
-            package = select_app_for_admin_op(device)
-            if package:
-                adb = get_adb_interface(device)
-                console.print(f"\n[bold cyan]▶️  Opening {package}...[/bold cyan]")
-                if adb.open_app(package):
-                    console.print(f"[bold green]✓ Successfully opened {package}[/bold green]")
-                else:
-                    console.print(f"[bold red]✗ Failed to open {package}. Is it installed?[/bold red]")
-        
-        elif choice == '3':
-            package = select_app_for_admin_op(device)
-            if package:
-                adb = get_adb_interface(device)
-                console.print(f"\n[bold cyan]⏹️  Force stopping {package}...[/bold cyan]")
-                if adb.force_stop_app(package):
-                    console.print(f"[bold green]✓ Successfully force stopped {package}[/bold green]")
-                else:
-                    console.print(f"[bold red]✗ Failed to force stop {package}[/bold red]")
-        
-        elif choice == '4':
-            break
-        
-        else:
-            console.print("[red]Invalid option.[/red]")
 
 
 def main_menu():

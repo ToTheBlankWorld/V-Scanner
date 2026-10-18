@@ -74,15 +74,15 @@ def tmp_cwd(tmp_path, monkeypatch):
 
 @pytest.fixture
 def isolated_config(monkeypatch, tmp_path):
-    """Point both legacy config loaders at a temp config path.
+    """Point the legacy config loader at a temp config path.
 
     Used to prove the CLI works without the tracked cli/adb_config.json
-    (Stage 02 hygiene rule: untracking must not break consumers).
+    (Stage 02 hygiene rule: untracking must not break consumers). After
+    R-02 (Stage 03) only ``adb_setup.CONFIG_FILE`` exists — main.py no
+    longer carries its own config state.
     """
     import adb_setup
-    import main as main_module
 
     cfg = tmp_path / "adb_config.json"
     monkeypatch.setattr(adb_setup, "CONFIG_FILE", str(cfg))
-    monkeypatch.setattr(main_module, "CONFIG_FILE", str(cfg))
     return cfg

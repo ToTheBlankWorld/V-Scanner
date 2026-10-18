@@ -39,9 +39,16 @@ def get_adb_download_url() -> str:
         return f"{base_url}/platform-tools-latest-linux.zip"
 
 
-def get_scrcpy_download_url() -> str:
+def get_scrcpy_download_url():
     """Get the download URL for scrcpy based on OS.
-    Fetches latest release from GitHub API to ensure correct URL."""
+    Fetches latest release from GitHub API to ensure correct URL.
+
+    R-11 change: the stale hardcoded v2.4 fallback was REMOVED — shipping
+    URLs it never verified is how the pin rotted in the first place. When
+    the release API is unreachable (or no supported asset exists) this
+    returns ``None`` and the setup flow reports an actionable error instead
+    of downloading an unverified old release.
+    """
     try:
         import json as json_module
         from urllib.request import urlopen as url_open
@@ -76,21 +83,25 @@ def get_scrcpy_download_url() -> str:
                 for asset in assets:
                     if "linux" in asset["name"].lower() and asset["name"].endswith(".tar.gz"):
                         return asset["browser_download_url"]
+
+            # API answered but no matching asset: no unverified guess is made
+            console.print(
+                f"[yellow]⚠ GitHub release data contained no supported scrcpy "
+                f"asset for {OS_TYPE} / {ARCH}. Upstream packaging may have "
+                f"changed — install scrcpy manually from the releases page.[/yellow]"
+            )
+            return None
     except Exception as e:
-        console.print(f"[yellow]⚠ Could not fetch latest release: {e}[/yellow]")
+        console.print(f"[yellow]⚠ Could not fetch latest scrcpy release: {e}[/yellow]")
 
-    # Fallback to known working version if API fails
-    base_url = "https://github.com/Genymobile/scrcpy/releases/download/v2.4"
-
-    if OS_TYPE == "Windows":
-        return f"{base_url}/scrcpy-2.4-win64-v4.zip"
-    elif OS_TYPE == "Darwin":
-        if ARCH == "arm64":
-            return f"{base_url}/scrcpy-2.4-macos-arm64-v4.tar.gz"
-        else:
-            return f"{base_url}/scrcpy-2.4-macos-x86_64-v4.tar.gz"
-    else:  # Linux
-        return f"{base_url}/scrcpy-2.4-linux-x86_64-v4.tar.gz"
+    # R-11: no offline fallback URL is shipped (the hardcoded v2.4 pin was
+    # removed); setup reports an actionable error instead.
+    console.print(
+        "[yellow]⚠ No offline scrcpy download is guaranteed anymore: connect "
+        "to the internet and retry, or install scrcpy manually from "
+        "https://github.com/Genymobile/scrcpy/releases.[/yellow]"
+    )
+    return None
 
 
 def download_file(url: str, dest_path: Path) -> bool:
@@ -137,16 +148,58 @@ def download_file(url: str, dest_path: Path) -> bool:
     return False
 
 
+def _validate_member_names(names, extract_to: Path) -> None:
+    """Reject archive members that would write outside ``extract_to`` (R-11).
+
+    Checks, in order: absolute paths (POSIX- and drive-letter style),
+    explicit ``..`` components, and an anchored ``os.path.realpath``
+    comparison of every resolved member against the destination. Raises
+    ``ValueError`` BEFORE any extraction happens.
+    """
+    import re as _re
+
+    base = os.path.realpath(str(extract_to))
+    base_prefix = base.rstrip("\\/") + os.sep
+    for name in names:
+        normalized = name.replace("\\", "/")
+        if not normalized or normalized.strip() in (".", ".."):
+            raise ValueError(f"unsafe archive member name: {name!r}")
+        if normalized.startswith("/") or _re.match(r"^[A-Za-z]:", normalized):
+            raise ValueError(f"absolute path member rejected: {name!r}")
+        if ".." in normalized.split("/"):
+            raise ValueError(f"path traversal member rejected: {name!r}")
+        target = os.path.realpath(os.path.join(str(extract_to), *normalized.split("/")))
+        if target != base and not target.startswith(base_prefix):
+            raise ValueError(f"member resolves outside the destination: {name!r} -> {target}")
+
+
 def extract_windows_zip(zip_path: Path, extract_to: Path):
-    """Extract Windows ZIP file."""
+    """Extract Windows ZIP file (R-11: members validated before any write)."""
     with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+        _validate_member_names(zip_ref.namelist(), extract_to)
         zip_ref.extractall(extract_to)
 
 
 def extract_unix_tar(tar_path: Path, extract_to: Path):
-    """Extract Unix TAR.GZ file."""
+    """Extract Unix TAR.GZ file (R-11: member/link validation + PEP 706
+    ``filter='data'`` as defense-in-depth where the interpreter offers it)."""
     with tarfile.open(tar_path, 'r:gz') as tar_ref:
-        tar_ref.extractall(extract_to)
+        members = tar_ref.getmembers()
+        _validate_member_names([m.name for m in members], extract_to)
+        for member in members:
+            link = member.linkname
+            if link:
+                if link.startswith("/") or ".." in link.replace("\\", "/").split("/"):
+                    raise ValueError(
+                        f"link target escapes the destination: {member.name!r} -> {link!r}"
+                    )
+        try:
+            tar_ref.extractall(extract_to, filter="data")
+        except TypeError:
+            # Interpreter without the extraction-filter keyword (pre-3.12/
+            # backport): the explicit member and link validation above
+            # carries the guarantee.
+            tar_ref.extractall(extract_to)
 
 
 def setup_adb() -> bool:
@@ -223,6 +276,14 @@ def setup_scrcpy() -> bool:
 
     # Download scrcpy
     scrcpy_url = get_scrcpy_download_url()
+    if not scrcpy_url:
+        # R-11: no unverified fallback URL is guessed; report actionable status
+        console.print("[red]✗ Could not determine a verified scrcpy download URL.[/red]")
+        console.print("[dim]Check your internet connection, or install scrcpy manually "
+                      "from https://github.com/Genymobile/scrcpy/releases "
+                      "(the Stage 14 installer will also bundle it).[/dim]")
+        return False
+
     archive_name = "scrcpy.zip" if OS_TYPE == "Windows" else "scrcpy.tar.gz"
     archive_path = TOOLS_DIR / archive_name
 

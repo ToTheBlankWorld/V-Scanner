@@ -1,8 +1,11 @@
-"""Tool-provisioning characterization tests (Stage 02 — section D, part 2).
+"""Tool-provisioning hardening tests (Stage 02 → Stage 03 update).
 
 Fake archives are generated programmatically (no binaries committed).
-Extraction safety behavior is documented: zipfile sanitizes traversal
-members; tarfile (legacy default filters) does not — R-11 evidence.
+Stage 02 characterized extraction safety (zipfile sanitizes traversal;
+legacy tarfile did not — R-11 evidence). Stage 03 hardened both legacy
+extraction paths: member/link validation + PEP 706 filter='data'. The
+tests below now assert the hardened behavior; the engine has its own
+validated extractors (vscanner/services/tools/_extraction.py).
 All temporary directories are pytest-managed; nothing under cli/ is written.
 """
 
@@ -36,15 +39,17 @@ class TestZipExtraction:
         with pytest.raises(zipfile.BadZipFile):
             tm.extract_windows_zip(archive, out)
 
-    def test_zipfile_sanitizes_traversal_members(self, tmp_path):
-        """Safety probe: zipfile refuses '..' path members (defense exists —
-        the legacy zip path is therefore not the leak)."""
+    def test_zip_traversal_member_rejected_after_hardening(self, tmp_path):
+        """R-11 remediated (Stage 03): the legacy zip path now validates
+        members explicitly and rejects traversal before any write (the
+        Stage 02 probe relied on zipfile's internal sanitization)."""
         archive = tmp_path / "slip.zip"
         with zipfile.ZipFile(archive, "w") as zf:
             zf.writestr("../escape_should_not_exist.txt", b"x")
         out = tmp_path / "out"
         out.mkdir()
-        tm.extract_windows_zip(archive, out)
+        with pytest.raises(ValueError):
+            tm.extract_windows_zip(archive, out)
         assert not (tmp_path / "escape_should_not_exist.txt").exists()
 
 
@@ -61,22 +66,10 @@ class TestTarExtraction:
         tm.extract_unix_tar(archive, out)
         assert (out / "scrcpy-3.1" / "scrcpy").read_bytes() == data
 
-    def test_tar_traversal_member_writes_outside_target(self, tmp_path):
-        """R-11 characterization (documented defect, not desired behavior):
-        the legacy tar extraction member '..' escapes the destination dir."""
-        archive = tmp_path / "slip.tar.gz"
-        with tarfile.open(archive, "w:gz") as tf:
-            info = tarfile.TarInfo("../tar_escape_should_not_exist.txt")
-            info.size = 1
-            tf.addfile(info, io.BytesIO(b"x"))
-        out = tmp_path / "out"
-        out.mkdir()
-        tm.extract_unix_tar(archive, out)  # must not raise — that IS the defect
-        assert (tmp_path / "tar_escape_should_not_exist.txt").exists()
-
-    @pytest.mark.xfail(strict=False, reason="R-11 owned by Stage 03: extraction filter + checksum manifest")
-    def test_required_tar_traversal_prevention(self, tmp_path):
-        """R-11 required behavior (flips at Stage 03 hardening)."""
+    def test_tar_traversal_member_rejected_after_hardening(self, tmp_path):
+        """R-11 remediated (Stage 03): the legacy tar path raises before any
+        write for traversal members (Stage 02 characterization documented the
+        escape; the paired xfail requirement now merges into this test)."""
         archive = tmp_path / "slip.tar.gz"
         with tarfile.open(archive, "w:gz") as tf:
             info = tarfile.TarInfo("../tar_escape_required.txt")
@@ -84,9 +77,23 @@ class TestTarExtraction:
             tf.addfile(info, io.BytesIO(b"x"))
         out = tmp_path / "out"
         out.mkdir()
-        with pytest.raises(Exception):
+        with pytest.raises(ValueError):
             tm.extract_unix_tar(archive, out)
         assert not (tmp_path / "tar_escape_required.txt").exists()
+
+    def test_tar_symlink_escape_rejected_after_hardening(self, tmp_path):
+        """R-11 required behavior: link entries pointing outside the
+        destination are rejected (R-11 of the mission's extraction tests)."""
+        archive = tmp_path / "symlink.tar.gz"
+        with tarfile.open(archive, "w:gz") as tf:
+            info = tarfile.TarInfo("inside/link")
+            info.type = tarfile.SYMTYPE
+            info.linkname = "../../outside_target"
+            tf.addfile(info)
+        out = tmp_path / "out"
+        out.mkdir()
+        with pytest.raises(ValueError):
+            tm.extract_unix_tar(archive, out)
 
 
 class TestSetupFlowsOffline:

@@ -1,15 +1,42 @@
 #!/usr/bin/env python3
 """
-ADB Setup Module
-Uses tools_manager to get local ADB or system ADB
+ADB Setup Module — legacy adapter over the V-Scanner 3.0 engine (Stage 03).
+
+The authoritative ADB-config read/write and executable-validation logic now
+lives in the engine (``vscanner.services.config`` / ``vscanner.services.adb.executable``)
+per R-02; this module is a thin compatibility adapter so legacy callers
+(``cli/main.py``, ``auto_setup``, ``dependency_checker``... actually
+``cli/main.py``) keep their exact function surface:
+
+    ``check_adb_valid`` · ``save_adb_config`` · ``load_adb_config`` ·
+    ``get_adb_path`` · ``interactive_adb_setup``
+
+Behavior contract preserved from the legacy module, with ONE deliberate
+improvement (R-02): a malformed config file can no longer fail silently —
+the adapter prints a visible warning and still returns ``None`` (never a
+garbage path). Typed ``ConfigError`` propagation is available through the
+engine's :class:`~vscanner.services.config.ConfigService` directly.
 """
 
 import os
-import json
+import sys as _sys
 import subprocess
 from typing import Optional
+from pathlib import Path
 from rich.console import Console
 from rich.panel import Panel
+
+# Make the repository root importable so ``vscanner`` resolves when this
+# legacy module is imported as a flat module (``cli/`` on sys.path, repo
+# root typically not). Tiny bootstrap — no import machinery rewrites.
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in _sys.path:
+    _sys.path.insert(0, str(_REPO_ROOT))
+
+from vscanner.core.errors import ConfigError  # noqa: E402
+from vscanner.services.config import ConfigService  # noqa: E402
+from vscanner.services.adb.executable import check_adb_valid as _engine_check_adb_valid  # noqa: E402
+
 from tools_manager import get_adb_path as get_local_adb_path, check_tool_exists as check_local_tool
 
 console = Console()
@@ -17,48 +44,52 @@ console = Console()
 CONFIG_FILE = os.path.join(os.path.dirname(__file__), "adb_config.json")
 
 
-def check_adb_valid(adb_path: str) -> bool:
-    """Verify that the given path is a valid ADB executable."""
-    if not os.path.exists(adb_path):
-        return False
+def _config_service() -> ConfigService:
+    """Build the engine's config service for the current CONFIG_FILE value.
 
-    try:
-        result = subprocess.run(
-            [adb_path, "version"],
-            capture_output=True,
-            timeout=5,
-            text=True
-        )
-        return result.returncode == 0
-    except Exception:
-        return False
+    Read at call time so tests can point the legacy adapter at a temp path
+    via ``monkeypatch.setattr(adb_setup, "CONFIG_FILE", ...)``.
+    """
+    return ConfigService(Path(CONFIG_FILE))
+
+
+def check_adb_valid(adb_path: str) -> bool:
+    """Verify that the given path is a valid ADB executable.
+
+    Delegates to the engine's single implementation (R-02); semantics
+    identical to the legacy probe (path-exists + 5 s ``adb version`` run).
+    """
+    return _engine_check_adb_valid(adb_path)
 
 
 def save_adb_config(adb_path: str):
-    """Save ADB path to config file."""
+    """Save ADB path to config file (atomic write via the config service)."""
     try:
-        config = {"adb_path": adb_path}
-        os.makedirs(os.path.dirname(CONFIG_FILE), exist_ok=True)
-        with open(CONFIG_FILE, 'w') as f:
-            json.dump(config, f, indent=2)
+        _config_service().save(adb_path)
     except Exception as e:
         console.print(f"[yellow]Warning: Could not save ADB config: {e}[/yellow]")
 
 
 def load_adb_config() -> Optional[str]:
-    """Load saved ADB path from config file."""
+    """Load saved ADB path from config file.
+
+    R-02 behavior upgrade over the legacy swallow-all handler: parse and
+    schema problems print a visible warning; the return contract (None on
+    any failure, validated path on success) is unchanged for callers.
+    """
     try:
-        if os.path.exists(CONFIG_FILE):
-            with open(CONFIG_FILE, 'r') as f:
-                config = json.load(f)
-                saved_path = config.get("adb_path")
-
-                # Verify the saved path is still valid
-                if saved_path and check_adb_valid(saved_path):
-                    return saved_path
-    except Exception:
-        pass
-
+        snapshot = _config_service().load()
+    except ConfigError as e:
+        console.print(
+            f"[bold red]✗ ADB configuration file is malformed or unreadable "
+            f"({CONFIG_FILE}); re-run ADB setup.[/bold red] ({e.message})"
+        )
+        return None
+    saved_path = snapshot.adb_path
+    # Verify the saved path is still valid (legacy parity; monkeypatch seam
+    # stays the module-level name for the regression suite).
+    if saved_path and check_adb_valid(saved_path):
+        return saved_path
     return None
 
 
@@ -147,4 +178,3 @@ def interactive_adb_setup() -> Optional[str]:
 
         else:
             console.print("[red]Invalid choice[/red]")
-

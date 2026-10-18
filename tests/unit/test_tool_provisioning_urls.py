@@ -1,12 +1,15 @@
-"""Tool-manager characterization tests (Stage 02 — section D, part 1: URLs).
+"""Tool-manager URL resolution tests (Stage 02, updated Stage 03).
 
 No network access: GitHub API responses are monkey-patched. The stale
-scrcpy v2.4 fallback (R-11) is documented here, not blessed.
+scrcpy v2.4 fallback (R-11) was REMOVED in Stage 03 — these tests now lock
+in the no-fabricated-URL behavior (API failure / asset miss → None with an
+actionable message, never a guessed link).
 """
 
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -73,14 +76,33 @@ class TestScrcpyUrlResolution:
         monkeypatch.setattr("urllib.request.urlopen", lambda url, timeout=10: FakeUrlOpen(SCRCPY_RELEASE_JSON.encode()))
         assert tm.get_scrcpy_download_url().endswith(suffix)
 
-    def test_api_failure_falls_back_to_stale_v2_4(self, monkeypatch):
-        """R-11 characterization: when the release API is unreachable the code
-        silently falls back to the pinned v2.4 asset (a stale, drifted link)."""
+    def test_api_failure_yields_no_url_after_hardening(self, monkeypatch, capsys):
+        """R-11 remediated (Stage 03): an unreachable release API no longer
+        falls back to the stale v2.4 asset. No URL is fabricated — the flow
+        returns None and the setup path reports an actionable error."""
         monkeypatch.setattr(tm, "OS_TYPE", "Windows")
 
         def boom(url, timeout=10):
             raise OSError("network unavailable")
 
         monkeypatch.setattr("urllib.request.urlopen", boom)
-        url = tm.get_scrcpy_download_url()
-        assert url == "https://github.com/Genymobile/scrcpy/releases/download/v2.4/scrcpy-2.4-win64-v4.zip"
+        assert tm.get_scrcpy_download_url() is None
+        console_out = capsys.readouterr().out
+        assert "scrcpy" in console_out.lower()
+
+    def test_api_asset_miss_yields_no_url_after_hardening(self, monkeypatch):
+        """R-11 required behavior: even when the API answers, a release with
+        no supported asset for the platform returns None (no guessed asset)."""
+        empty_release = json.dumps({"assets": [{"name": "scrcpy-9.9-future-os.tar.gz",
+                                                "browser_download_url": "https://example.invalid/x"}]})
+        monkeypatch.setattr(tm, "OS_TYPE", "Windows")
+        monkeypatch.setattr("urllib.request.urlopen",
+                            lambda url, timeout=10: FakeUrlOpen(empty_release.encode()))
+        assert tm.get_scrcpy_download_url() is None
+
+    def test_stale_v2_4_url_never_referenced_again(self):
+        """R-11 regression lock: the removed fallback pin must stay removed —
+        no v2.4 download URL may be rebuildable from this module."""
+        source = Path(tm.__file__).read_text(encoding="utf-8")
+        assert "/v2.4/" not in source and "releases/download/v2.4" not in source
+        assert "scrcpy-2.4-" not in source

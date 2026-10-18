@@ -74,11 +74,13 @@ Finding                 # id: RO str = stable_id(); kind: FindingCategory;
                         # title: str; detail: str;
                         # evidence: tuple[Evidence, ...];
                         # remediation: tuple[Remediation, ...];
-                        # detected_by: str (module name), run_id: str
+                        # detected_by: str (module name), run_id: str;
+                        # tags: tuple[str, ...] (DATAMODELS amendment, Stage 03)
 ```
 - `stable_id()` = sha256 over (`kind|severity|app.package|device_serial|title|first evidence.source`) truncated to 16 hex chars → dedup across runs; documented as the stable finding key.
 - Mapping from legacy: `dangerous_permissions` list → `Finding(kind=PERMISSION_EXCESS, severity=RiskLevel.to.Threshold, evidence=kind=CONFIRMED_ARTIFACT from dumpsys)`. SDK advisories → `SDK_COMPAT, …, evidence kind=INFORMATIONAL`. Insecure URLs from deep scan → `INSECURE_URL, evidence kind=HEURISTIC_PATTERN (grep on binary strings)`. Future secret detection → `HARDCODED_SECRET, evidence kind=CONFIRMED_ARTIFACT` (only successful extraction+match), never partially-guessed.
 - What never appears as a finding: absence of knowledge (unknown SDK 35 entries → INFO note), root check failures → UNVERIFIED_CONDITION note with detail "root status could not be determined."
+- **Amendment (Stage 03): `Finding.tags` is a controlled free-form `tuple[str, ...]`** — UI badge metadata and compat-writer data, never secret material, always renderable. Current producer: the permission analysis emits `(KB category,)` per permission finding (e.g. `("SMS",)`), which the compat report writer uses to reproduce the legacy `dangerous_permissions[].category`. The plan needs this field documented because the compat-writer consumes it as a serialization input.
 
 ## 5. Scan results and summaries
 
