@@ -25,6 +25,8 @@ dependencies = [
 
 [project.scripts]
 vscanner-tui = "ui_terminal.app:main"
+# Stage 09: desktop launch (needs the optional [desktop] extra installed).
+vscanner-desktop = "ui_desktop.app:main"
 
 [project.optional-dependencies]
 dev = [
@@ -32,6 +34,12 @@ dev = [
     "coverage",
     "ruff",
     "mypy",
+]
+# Stage 09 desktop presentation layer (ARCHITECTURE_DECISIONS T-04).
+# Qt Widgets only; floor chosen for Python 3.10-3.12 + Windows and verified
+# with the version installed in this stage (6.12.0).
+desktop = [
+    "PySide6>=6.12,<7",
 ]
 
 [tool.setuptools]
@@ -46,6 +54,8 @@ packages = [
     "vscanner.services.tools",
     "ui_terminal",
     "ui_terminal.screens",
+    "ui_desktop",
+    "ui_desktop.screens",
 ]
 
 [tool.pytest.ini_options]
