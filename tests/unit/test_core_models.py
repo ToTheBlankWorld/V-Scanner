@@ -82,6 +82,21 @@ class TestAppInfo:
         with pytest.raises(Exception):
             info.package_name = "other"
 
+    def test_tolerant_relaxes_pattern_but_keeps_non_empty_invariant(self):
+        # Non-canonical package segment (no dot) still records honestly.
+        info = AppInfo.tolerant("straight_up_no_dots", label="Vendor Oddity")
+        assert info.package_name == "straight_up_no_dots"
+        assert info.label == "Vendor Oddity"
+        assert info.requested_permissions == ()  # declared defaults filled
+
+    def test_tolerant_still_rejects_empty_package_name(self):
+        with pytest.raises(ValueError):
+            AppInfo.tolerant("   ")
+
+    def test_tolerant_rejects_unknown_fields(self):
+        with pytest.raises(TypeError):
+            AppInfo.tolerant("weird", not_a_field=1)
+
 
 class TestScanRequestValidation:
     def test_full_device_requires_serial(self):

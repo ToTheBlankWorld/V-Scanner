@@ -158,7 +158,31 @@ class AppInfo:
     def tolerant(cls, package_name: str, **kwargs: Any) -> "AppInfo":
         """Build an AppInfo with the strict-pattern check relaxed, keeping the
         non-empty invariant. Rare vendor oddities stay flagged in reports."""
-        info = cls(package_name="_legitimate_placeholder", **kwargs)
+        if not package_name or not package_name.strip():
+            raise ValueError("AppInfo.package_name must be non-empty")
+        # Construct via ``__new__``: the declared field defaults fill anything
+        # the caller omitted, then only the non-empty invariant is enforced.
+        # (Bypassing ``__post_init__`` is the documented tolerance point — the
+        # former placeholder-based construction tripped its own dotted-segment
+        # validation and could never produce a record for the honest-skip
+        # path.)
+        _UNSET = object()
+        info = cls.__new__(cls)
+        supplied = dict(kwargs)
+        for dc_field in dataclasses.fields(cls):
+            if dc_field.name == "package_name":
+                continue
+            value = supplied.pop(dc_field.name, _UNSET)
+            if value is _UNSET:
+                if dc_field.default_factory is not dataclasses.MISSING:
+                    value = dc_field.default_factory()
+                else:
+                    value = dc_field.default
+            object.__setattr__(info, dc_field.name, value)
+        if supplied:
+            raise TypeError(
+                f"unexpected AppInfo fields: {sorted(supplied)}"
+            )
         object.__setattr__(info, "package_name", package_name)
         return info
 

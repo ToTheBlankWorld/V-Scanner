@@ -20,7 +20,7 @@ from __future__ import annotations
 import re
 import time
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Protocol, Tuple
+from typing import Any, Dict, List, Optional, Protocol, Tuple, TYPE_CHECKING
 
 from vscanner.core.errors import InputValidationError, ScanInterrupted
 from vscanner.core.kb.permissions import analyze_permissions, get_sdk_risk, RiskLevel
@@ -47,6 +47,14 @@ from vscanner.services.scanning.app_inventory import PackageInventoryService
 from vscanner.services.scanning.package_parser import derived_label
 
 __all__ = ["ScanService", "validate_package_name", "MAX_PACKAGE_LENGTH"]
+
+# Stage 04 job-system seam: the context (cancel token + event emission +
+# log lane) arrives from the JobManager through ``context=context``. Plain
+# ``TYPE_CHECKING`` import keeps the runtime dependency graph unchanged; at
+# runtime any object with ``cancel_token``/``progress``/``emit_finding``/
+# ``log`` works (structural barrier per JOB_AND_EVENT_CONTRACTS §2).
+if TYPE_CHECKING:  # pragma: no cover - import guard only
+    from vscanner.services.jobs import JobContext  # noqa: F401
 
 
 # Mission contract asks for ^[a-z0-9._+]+$; resolution of the ambiguity
@@ -143,7 +151,16 @@ class ScanService:
     # full-device orchestration
     # ------------------------------------------------------------------ #
 
-    def scan_full_device(self, request: ScanRequest) -> ScanResultBundle:
+    def scan_full_device(self, request: ScanRequest,
+                         context: Optional["JobContext"] = None) -> ScanResultBundle:
+        """Full-device orchestration (SC-3).
+
+        ``context`` is the optional Stage 04 job seam: when provided the run
+        emits ``JobProgressEvent``/``JobFindingEvent`` streams and takes
+        cancellation checkpoints at the documented points (between apps;
+        at the progress-emit boundary). Omitted → identical Stage 03
+        behavior and none of that overhead (legacy-callers unaffected).
+        """
 
         started = time.perf_counter()
         run = ScanRun(
@@ -152,6 +169,8 @@ class ScanService:
             started_at=datetime.now(timezone.utc),
         )
 
+        if context is not None:
+            context.log("info", "enumerating installed packages")
         try:
             packages = self.inventory.list_packages(include_system=request.config.include_system)
         except Exception as exc:  # transport-level failure → interrupted scan
@@ -159,9 +178,21 @@ class ScanService:
                 f"full-device scan could not start: {exc}", partial=False
             ) from exc
 
+        total = len(packages)
+        if context is not None and total == 0:
+            context.log("info", "no packages matched the listing filter")
         results: List[AppScanResult] = []
-        for pkg in packages:
+        for index, pkg in enumerate(packages):
+            if context is not None:
+                # Cancellation points (JOB_AND_EVENT_CONTRACTS §5):
+                # between apps, and at the progress-emit boundary below.
+                context.cancel_token.checkpoint("between_apps")
             results.append(self._scan_one_package(pkg, request))
+            if context is not None:
+                for finding in results[-1].findings:
+                    context.emit_finding(finding)
+                context.progress(index + 1, total, unit="apps", context=pkg)
+                context.cancel_token.checkpoint("after_progress_emit")
 
         summary = self._summarize(run, results, started)
         return ScanResultBundle(summary=summary, apps=tuple(results))

@@ -57,7 +57,7 @@ filterwarnings = [
 [tool.coverage.run]
 # Measure coverage of the legacy CLI package AND the new engine package.
 # Values are reported honestly in docs/vscanner-3/TESTING_STRATEGY.md.
-source = ["cli", "vscanner"]
+source = ["cli", "vscanner", "ui_terminal", "ui_desktop"]
 omit = ["cli/setup.py", "cli/python usb_charging_control.py"]
 
 [tool.ruff]
@@ -76,10 +76,11 @@ extend-exclude = ["cli", "android"]
 select = ["E9", "F63", "F7", "F82", "E722", "F811", "F841", "B006", "B015", "B018"]
 
 [tool.mypy]
-# Stage 03: type-check the new tests AND the engine package. Legacy cli/
-# imports are followed "silently" (errors inside legacy code stay suppressed
-# until each module migrates), while unresolved imports still surface.
-files = ["tests", "vscanner"]
+# Stage 03: type-check the new tests AND the engine package. Stage 04 adds
+# the bridge stubs (ui_terminal/ui_desktop — framework-free adapter layers).
+# Legacy cli/ imports are followed "silently" (errors inside legacy code stay
+# suppressed until each module migrates), while unresolved imports surface.
+files = ["tests", "vscanner", "ui_terminal", "ui_desktop"]
 mypy_path = "cli"
 follow_imports = "silent"
 ignore_missing_imports = true

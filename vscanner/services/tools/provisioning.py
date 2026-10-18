@@ -28,10 +28,10 @@ import platform as _platform
 import shutil
 import zipfile
 from pathlib import Path
-from typing import Callable, cast, Optional, Protocol, Tuple
+from typing import TYPE_CHECKING, Callable, cast, Optional, Protocol, Tuple
 from urllib.request import urlopen
 
-from vscanner.core.errors import ProvisioningError
+from vscanner.core.errors import JobCancelRequested, ProvisioningError
 from vscanner.core.models import ToolId, ToolState, ToolStatusReflected
 from vscanner.services.adb.executable import check_adb_valid
 from vscanner.services.tools.manifest import (
@@ -44,12 +44,28 @@ from vscanner.services.tools.manifest import (
 )
 from vscanner.services.tools import _extraction
 
+if TYPE_CHECKING:  # pragma: no cover - import guard only
+    from vscanner.services.jobs import JobContext  # noqa: F401
+
 __all__ = ["ToolProvisioningService", "SCRCPY_API_URL", "DownloadProgress"]
 
 SCRCPY_API_URL = "https://api.github.com/repos/Genymobile/scrcpy/releases/latest"
 CHUNK_SIZE = 8192
 _READ_TIMEOUT = 30
 _API_TIMEOUT = 10
+
+
+def _chain_progress(
+    progress: Optional[DownloadProgress], context: "JobContext"
+) -> DownloadProgress:
+    """Optional caller callback + job progress emission, in a stable order
+    (caller first so legacy semantics are untouched; the job progress event
+    is additive). Context-transient — never stored on the instance."""
+    def chained(downloaded: int, total: Optional[int]) -> None:
+        if progress is not None:
+            progress(downloaded, total)
+        context.progress(downloaded, total, unit="bytes", context="staged download")
+    return chained
 
 
 class DownloadProgress(Protocol):
@@ -143,13 +159,20 @@ class ToolProvisioningService:
     # ------------------------------------------------------------------ #
 
     def provision_tool(self, tool: ToolId, version: Optional[str] = None,
-                       progress: Optional[DownloadProgress] = None) -> ToolStatusReflected:
+                       progress: Optional[DownloadProgress] = None,
+                       context: Optional["JobContext"] = None) -> ToolStatusReflected:
         """Download → verify → extract → install ``tool``.
 
-        Raises :class:`ProvisioningError` (network, checksum, extraction,
-        unsupported platform) with ``cleanup_done=True`` after staging
-        cleanup; re-raises :class:`AdbNotAvailable` through validation.
+        Raises :class:`JobCancelRequested` at the documented cooperative
+        cancellation points (download-chunk boundaries; before extract;
+        before the install move — the staged archive is discarded in that
+        case by the cleanup below), and :class:`ProvisioningError`
+        (network, checksum, extraction, unsupported platform) with
+        ``cleanup_done=True`` after staging cleanup; re-raises
+        :class:`AdbNotAvailable` through validation.
         """
+        if context is not None:
+            progress = _chain_progress(progress, context)
         status = self.ensure_tool(tool)
         if status.state is ToolState.VALIDATED or (
             tool is ToolId.SCRCPY and status.path and Path(status.path).exists()
@@ -171,16 +194,20 @@ class ToolProvisioningService:
             extract_dir = staging_root / f"{tool.value}_extract"
 
             try:
-                self._download(url, archive_path, progress)
+                self._download(url, archive_path, progress, context)
+                if context is not None:
+                    context.cancel_token.checkpoint("before_extract")
                 self._verify_checksum(archive_path, spec.sha256)
                 if extract_dir.exists():
                     shutil.rmtree(extract_dir)
                 self._extract_archive(archive_path, extract_dir, spec.archive_format)
+                if context is not None:
+                    context.cancel_token.checkpoint("before_install_move")
                 self._install_from_staging(tool, extract_dir)
             finally:
                 self._cleanup_staging(archive_path, extract_dir)
 
-        except ProvisioningError:
+        except (ProvisioningError, JobCancelRequested):
             raise
         except Exception as exc:
             raise ProvisioningError(
@@ -225,7 +252,8 @@ class ToolProvisioningService:
             ) from exc
 
     def _download(self, url: str, dest: Path,
-                  progress: Optional[DownloadProgress]) -> None:
+                  progress: Optional[DownloadProgress],
+                  context: Optional["JobContext"] = None) -> None:
         downloaded = 0
         total: Optional[int] = None
         try:
@@ -241,6 +269,11 @@ class ToolProvisioningService:
                         downloaded += len(chunk)
                         if progress is not None:
                             progress(downloaded, total)
+                        if context is not None:
+                            # Cancellation point (§5): between download chunks.
+                            context.cancel_token.checkpoint("during_download")
+        except (JobCancelRequested, KeyboardInterrupt, SystemExit):
+            raise
         except Exception as exc:
             raise ProvisioningError(
                 f"download failed: {exc}",
