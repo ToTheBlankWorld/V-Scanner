@@ -56,43 +56,48 @@ python -m pytest "tests/integration/test_syntax_baseline.py"
 - **Machine-specific config:** `isolated_config` fixture repoints both legacy config loaders to a temp file; tests never read the developer's real `cli/adb_config.json`.
 - Hard rule inherited by later stages: **no test may execute real ADB administrative (uninstall/open/force-stop) commands, real downloads, or read/write production device-data paths.**
 
-## 5. Type-check scope and lint baseline (Stage 02 decision records; Stage 03 update)
+## 5. Type-check scope and lint baseline (Stage 02 decision records; Stage 03/04 updates)
 
-- **mypy** since Stage 03 runs on `files = ["tests", "vscanner"]` (46 source files, zero issues). Legacy `cli/` imports are followed "silently": errors inside legacy modules stay suppressed until each module migrates, while unresolved imports and all new-code type defects surface. Target: **zero errors in the engine at every stage** — Stage 03 delivered clean (`Success: no issues found in 46 source files`).
+- **mypy** since Stage 04 runs on `files = ["tests", "vscanner", "ui_terminal", "ui_desktop"]` (57 source files, zero issues). Legacy `cli/` imports are followed "silently": errors inside legacy modules stay suppressed until each module migrates, while unresolved imports and all new-code type defects surface. Target: **zero errors in the engine at every stage** — Stage 04 delivered clean (`Success: no issues found in 57 source files`).
 - **Ruff** selects a minimal fixable set (`E9/F63/F7/F82/E722/F811/F841/B006/B015/B018`), `target-version = "py310"`, `cli/` and `android/` excluded until migrated. Baseline status: **all checks pass** across `vscanner` + `tests`.
 - **Syntax validation** compiles all 11 legacy modules plus the full engine package (`compileall` green for `vscanner cli tests`).
 
-## 6. Current coverage result (honest, re-measured at Stage 03)
+## 6. Current coverage result (honest, re-measured at Stage 04)
 
-Stage 02 measured cli-only TOTAL 20%. Stage 03 re-measured over `cli` + the new engine (`--include="cli/*,vscanner/*"`):
+Stage 02 measured cli-only TOTAL 20%. Stage 03 re-measured over `cli` + the new engine; Stage 04 added the `ui_terminal`/`ui_desktop` bridge stubs to the measured source set:
 
 | Module | Statements | Missed | Coverage |
 |---|---:|---:|---:|
+| vscanner/core/events.py | 96 | 0 | 100% |
 | vscanner/core/kb/permissions.py | 63 | 0 | 100% |
-| vscanner/core/models.py | 293 | 5 | 98% |
+| vscanner/core/models.py | 308 | 3 | 99% |
 | vscanner/core/redact.py | 25 | 1 | 96% |
 | vscanner/core/errors.py | 51 | 4 | 92% |
 | vscanner/services/reports/service.py | 98 | 2 | 98% |
+| vscanner/services/orchestration.py | 35 | 0 | 100% |
 | vscanner/services/config.py | 90 | 7 | 92% |
 | vscanner/services/doctor.py | 45 | 3 | 93% |
-| vscanner/services/scanning/* (3 modules) | 209 | 16 | ~93% |
+| vscanner/services/jobs.py | 370 | 34 | 91% |
+| vscanner/services/scanning/* (3 modules) | 221 | 13 | ~94% |
 | vscanner/services/adb/* (4 modules) | 181 | 44 | ~76% |
-| vscanner/services/tools/provisioning.py | 171 | 33 | 81% |
+| vscanner/services/tools/provisioning.py | 187 | 33 | 82% |
 | vscanner/services/tools/_extraction.py | 45 | 17 | 62% |
 | vscanner/services/registry.py | 61 | 17 | 72% |
+| ui_desktop/jobs_bridge_qt.py | 27 | 0 | 100% |
+| ui_terminal/jobs_bridge_async.py | 59 | 8 | 86% |
 | cli/main.py | 926 | 883 | 5% |
 | cli/scanner.py | 1033 | 775 | 25% |
 | cli/tools_manager.py | 282 | 165 | 41% |
 | cli/adb_setup.py | 80 | 46 | 42% |
 | cli/report_generator.py | 95 | 7 | 93% |
 | cli/permissions.py (shim) | 7 | 1 | 86% |
-| **TOTAL (cli + vscanner)** | **4679** | **2770** | **41%** |
+| **TOTAL (cli + vscanner + ui)** | **5311** | **2807** | **47%** |
 
-Interpretation: the engine is well anchored (models/KB/redaction/reports/config ≥ 92%; surgery-grade anchors on every service). Legacy interactive/rich-UI paths remain uncovered by design decision (that coverage arrives with service decomposition in Stages 04–12, not by writing brittle UI tests against legacy print flows). Do **not** flatten the 41% number into a quality claim; cite the per-engine anchors.
+Interpretation: the engine is well anchored (events/models/KB/redaction/reports/orchestration ≥ 92%; surgery-grade anchors on every service; jobs.py 91%). Legacy interactive/rich-UI paths remain uncovered by design decision (that coverage arrives with service decomposition in Stages 05–12, not by writing brittle UI tests against legacy print flows). Do **not** flatten the 47% number into a quality claim; cite the per-engine anchors.
 
-## 7. Suite facts (Stage 02 → Stage 03)
+## 7. Suite facts (Stage 02 → Stage 04)
 
-- Stage 02: **106 passed, 7 xfailed, 0 skipped** (9 files). Stage 03: **276 passed, 4 xfailed, 0 skipped** (17 test files), runtime < 2 s.
+- Stage 02: **106 passed, 7 xfailed, 0 skipped** (9 files). Stage 03: **276 passed, 4 xfailed, 0 skipped** (17 files). Stage 04: **363 passed, 4 xfailed, 0 skipped** (21 files), runtime ≈ 3.5 s.
 - No device, no network, no root; all artifacts under pytest temp dirs; one deterministic R-07 proof spawns `sys.executable` with list-argv (never a shell string).
 - All 11 legacy modules + the whole engine byte-compile (`compileall` green).
 

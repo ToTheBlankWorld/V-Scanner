@@ -34,7 +34,7 @@ Ground rules for all stages:
 **Exclusions:** no UI layer yet; legacy CLI still the operating interface.
 **Acceptance criteria:** legacy `main.py`/`scanner.py` call paths reproduced through services for at least: app listing, single-app analysis, full scan, all 3 report formats; parity evidence recorded (identical scores/fixtures vs legacy); new unit tests for services green.
 
-## Stage 04 — Job lifecycle and event system
+## Stage 04 - Job lifecycle and event system *(COMPLETE)*
 **Scope:** Implement the job system (`Job`, `JobHandle`, typed events, cooperative cancellation, timeouts) and re-route scanning/reporting/provisioning/monitoring jobs through it.
 **Dependencies:** Stage 03 services.
 **Exclusions:** no UI.
