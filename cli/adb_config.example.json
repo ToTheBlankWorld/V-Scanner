@@ -1,0 +1,4 @@
+{
+    "_comment": "This is an example ADB configuration for V Scanner. Copy it to cli/adb_config.json (that file is machine-local and gitignored) and set adb_path to the adb executable in your Android platform-tools installation. If cli/adb_config.json is absent, the CLI auto-detects ADB: first the tools folder it may download itself, then the system PATH.",
+    "adb_path": "C:/path/to/platform-tools/adb.exe"
+}

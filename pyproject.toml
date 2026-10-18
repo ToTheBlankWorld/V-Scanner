@@ -1,0 +1,49 @@
+# V-Scanner 3.0 — Development tooling configuration (Stage 02).
+#
+# Intentionally contains NO [project] table: production dependency
+# declarations remain in cli/requirements.txt unchanged (stage rule).
+# This file only configures pytest, coverage, Ruff and mypy.
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+xfail_strict = true
+# Strict xfails: a passing xfail becomes a hard failure, so a stage that
+# remediates a defect MUST update the marker and the remediation plan row.
+# tarfile emits a Python 3.12 deprecation warning about default extraction
+# filters while the legacy extraction behavior is being characterized (R-11).
+filterwarnings = [
+    "ignore:Python 3.14 will, by default, filter extracted tar archives:DeprecationWarning",
+]
+
+[tool.coverage.run]
+# Measure coverage of the legacy CLI package. Values are reported honestly
+# in docs/vscanner-3/TESTING_STRATEGY.md and are expected to be modest.
+source = ["cli"]
+omit = ["cli/setup.py", "cli/python usb_charging_control.py"]
+
+[tool.ruff]
+target-version = "py39"
+line-length = 120
+# Legacy cli/ gets lint enforcement when each module migrates (Stages 03+).
+# Enforcing today would fail on pre-existing defects that are scheduled for
+# remediation (SECURITY_AND_REMEDIATION_PLAN R-10/R-15) — not this stage.
+extend-exclude = ["cli", "android"]
+
+[tool.ruff.lint]
+# Minimal achievable baseline for NEW code (tests/docs tooling):
+# E9 syntax/runtime-level errors, F63/F7/F82 invalid checks,
+# E722 bare-except ban, F811 duplicate defs, F841 unused locals,
+# B006 mutable-default, B015 useless comparison, B018 useless expression.
+select = ["E9", "F63", "F7", "F82", "E722", "F811", "F841", "B006", "B015", "B018"]
+
+[tool.mypy]
+# Scoped intro: type-check the NEW tests only. Because the tests import the
+# legacy modules, imports are followed "silently" (errors inside legacy cli/
+# are suppressed until each module migrates — Stages 03+), while unresolved
+# imports in the tests themselves would still surface.
+files = ["tests"]
+mypy_path = "cli"
+follow_imports = "silent"
+ignore_missing_imports = true

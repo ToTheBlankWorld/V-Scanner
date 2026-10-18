@@ -1,0 +1,88 @@
+"""Shared fixtures for the V-Scanner regression suite (Stage 02).
+
+All tests are device-free: ADB subprocesses, downloads and network access are
+mocked. No test requires a connected Android device, root, or ADB/scrcpy.
+"""
+
+from __future__ import annotations
+
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
+
+# Make the legacy CLI modules importable by bare name (they import each
+# other with flat imports such as "from tools_manager import ...").
+CLI_DIR = Path(__file__).resolve().parents[1] / "cli"
+if str(CLI_DIR) not in sys.path:
+    sys.path.insert(0, str(CLI_DIR))
+
+
+def adb_completed(stdout: str = "", stderr: str = "", code: int = 0) -> subprocess.CompletedProcess:
+    """Build a subprocess.CompletedProcess shaped like an ADB result."""
+    return subprocess.CompletedProcess(args=[], returncode=code, stdout=stdout, stderr=stderr)
+
+
+class FakeAdb:
+    """Stand-in for ADBInterface recording commands and replaying responses.
+
+    ``responses`` is a list of ``(stdout, stderr, code)`` tuples.  When one
+    entry is left it is repeated for every subsequent call, so a single
+    response can back an unbounded command sequence.
+    """
+
+    def __init__(self, responses: list[tuple[str, str, int]] | None = None, rooted: bool = True):
+        self.calls: list[list[str]] = []
+        self.responses = list(responses or [])
+        if rooted and not self.responses:
+            # Default to the root-detection success signature used by
+            # digital_forensics._check_root_safe: first probe is
+            # ["shell", "su", "-c", "echo", "rooted"].
+            self.responses = [("rooted", "", 0)]
+
+    def _run_cmd(self, cmd: list[str], timeout: int = 30):
+        self.calls.append(list(cmd))
+        if not self.responses:
+            return "", "", 1
+        if len(self.responses) == 1:
+            return self.responses[0]
+        return self.responses.pop(0)
+
+    def call_strings(self) -> list[str]:
+        return [repr(call) for call in self.calls]
+
+
+@pytest.fixture
+def fake_adb_rooted() -> FakeAdb:
+    """Fake ADB whose root detection succeeds (device reports `rooted`)."""
+    return FakeAdb(responses=[("rooted", "", 0)])
+
+
+@pytest.fixture
+def fake_adb_detection_fails() -> FakeAdb:
+    """Fake ADB where both root probes fail (su probe and /system/xbin/su)."""
+    return FakeAdb(responses=[("", "permission denied", 1)])
+
+
+@pytest.fixture
+def tmp_cwd(tmp_path, monkeypatch):
+    """Run a test with the current working directory inside a temp dir."""
+    monkeypatch.chdir(tmp_path)
+    return tmp_path
+
+
+@pytest.fixture
+def isolated_config(monkeypatch, tmp_path):
+    """Point both legacy config loaders at a temp config path.
+
+    Used to prove the CLI works without the tracked cli/adb_config.json
+    (Stage 02 hygiene rule: untracking must not break consumers).
+    """
+    import adb_setup
+    import main as main_module
+
+    cfg = tmp_path / "adb_config.json"
+    monkeypatch.setattr(adb_setup, "CONFIG_FILE", str(cfg))
+    monkeypatch.setattr(main_module, "CONFIG_FILE", str(cfg))
+    return cfg

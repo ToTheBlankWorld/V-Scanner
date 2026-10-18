@@ -80,6 +80,19 @@ cli/reports/
 cli/test5/
 cli/forensics_cases/
 
+# Machine-local ADB configuration (cli/adb_config.example.json is the committed template)
+
+# ==============================
+
+cli/adb_config.json
+
+# Test tooling artifacts (pytest / coverage)
+
+# ==============================
+
+.coverage
+.pytest_cache/
+
 # ==============================
 
 # IDE / Editor
