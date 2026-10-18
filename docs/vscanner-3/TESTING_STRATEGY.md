@@ -115,27 +115,26 @@ Interpretation: the engine is well anchored (events/models/KB/redaction/reports/
 
 ## 7. Suite facts (Stage 02 → Stage 07)
 
-- Stage 02: **106 passed, 7 xfailed, 0 skipped** (9 files). Stage 03: **276 passed, 4 xfailed, 0 skipped** (17 files). Stage 04: **363 passed, 4 xfailed, 0 skipped** (21 files), runtime ≈ 3.5 s. Stage 05: **399 passed, 4 xfailed, 0 skipped** (24 files), runtime ≈ 22 s (Textual harness tests dominate; still device/network/root-free). Stage 06: **446 passed, 4 xfailed, 0 skipped** (27 files), runtime ≈ 62 s (new: `test_stage06_engine.py` 10, `test_device_workspace.py` 31, `test_inventory_ui.py` 4, + import-guard/doc-consistency additions). Stage 07: **505 passed, 4 xfailed, 0 skipped** (30 files), runtime ≈ 107 s (new: `test_stage07_engine.py` 15, `test_scan_screen.py` 24, `test_reports_ui.py` 12; `test_services_jobs.py` grew to 44 with the deterministic race-ordering tests and passes ×3 consecutive runs).
+- Stage 02: **106 passed, 7 xfailed, 0 skipped** (9 files). Stage 03: **276 passed, 4 xfailed, 0 skipped** (17 files). Stage 04: **363 passed, 4 xfailed, 0 skipped** (21 files), runtime ≈ 3.5 s. Stage 05: **399 passed, 4 xfailed, 0 skipped** (24 files), runtime ≈ 22 s (Textual harness tests dominate; still device/network/root-free). Stage 06: **446 passed, 4 xfailed, 0 skipped** (27 files), runtime ≈ 62 s (new: `test_stage06_engine.py` 10, `test_device_workspace.py` 31, `test_inventory_ui.py` 4, + import-guard/doc-consistency additions). Stage 07: **505 passed, 4 xfailed, 0 skipped** (30 files), runtime ≈ 107 s (new: `test_stage07_engine.py` 15, `test_scan_screen.py` 24, `test_reports_ui.py` 12; `test_services_jobs.py` grew to 44 with the deterministic race-ordering tests and passes ×3 consecutive runs). Stage 08: **602 passed, 0 xfailed, 0 skipped** (33 files), runtime ≈ 150 s (new: `test_stage08_engine.py` 66 — services, plans, bridge §13 containment, deep-scan integration; `test_stage08_ui.py` 17 — monitoring/forensics/mirroring/demo/admin screens; `test_known_defects.py` flipped to 16 fixed-behavior tests, 0 xfails). Repeat-run verification: ×2 recorded in the Stage 08 report.
 - No device, no network, no root; all artifacts under pytest temp dirs; one deterministic R-07 proof spawns `sys.executable` with list-argv (never a shell string).
 - All 11 legacy modules + the whole engine byte-compile (`compileall` green).
 
-## 8. Known expected failures (strict xfails, all mapped to remediation rows)
+## 8. Known expected failures (strict xfails — Stage 08 status: NONE REMAIN)
 
 `xfail_strict` is ON: when remediation flips behavior, the XPASS becomes a hard failure and the stage must remove the marker and update the plan row.
 
-**Remaining xfails (Stage 03 status: R-01/R-02/R-11 flipped → markers removed, tests converted to fixed-behavior assertions in the same commit; see SECURITY_AND_REMEDIATION_PLAN Stage 03 status bullets):**
+**All Stage-08-owned xfails were flipped at Stage 08** (`test_known_defects.py` now 16 passed, 0 xfailed; suite-wide xfail count is 0). Each flip is a behavior change enforced by the remediation; the test now asserts the fixed behavior:
 
-| Test | Defect | Owning stage |
+| Test | Defect | Flipped at |
 |---|---|---|
-| `TestR04...::test_no_sensor_data_means_no_invented_rows` | R-04 | 08 |
-| `TestR05...::test_failed_detection_must_not_report_root` | R-05 | 08 |
-| `TestR06...::test_credential_patterns_are_actually_applied` | R-06 | 08 |
-| `TestR07...::test_requirement_byte_safe_binary_extraction` | R-07 | 08 |
+| `TestR04FabricatedSensorFallback::test_no_sensor_data_means_no_invented_rows` | R-04 | Stage 08 — legacy `get_sensor_values_live` delegates to the engine `MonitoringService`; empty/failing output now yields an honest empty dict (`{}`), and `test_reported_rows_are_device_rows` pins that reported rows pass through untouched. The characterization rewrite asserts the *result-contract* change ({} instead of invented units/names). |
+| `TestR05RootDefaultsToRooted::test_failed_detection_must_not_report_root` | R-05 | Stage 08 — verified tri-state probe over the legacy forensics facade: failed detection ⇒ `is_rooted` False + `root_status == "unknown"` (never ROOTED); sibling tests pin confirmed root, confirmed `not-rooted`, and the both-directions-honest rule. |
+| `TestR06SecretPatternsNeverExecuted::test_patterns_actually_applied_in_deep_scan` | R-06 | Stage 08 — fixture rewritten to a three-part proof: `INSECURE_URL_PATTERNS` is consumed in the engine surface (AST load-count > 0 in `vscanner.services.scanning.deep_scan`), plus a behavioral positive/negative pair (`test_synthetic_credential_is_detected_and_redacted`: synthetic secret detected, ordinary text yields nothing, matched value never enters `CredentialHit`). Documented change: the original xfail targeted the never-executed legacy name; the flip keeps the original *intent* (patterns actually applied + honest redaction) against the live surface. |
+| `TestR07TextModeDatabaseRewrite::test_requirement_byte_safe_binary_extraction` | R-07 | Stage 08 — the byte-safe `run_bytes` (exec-out semantics) path preserves payloads byte-identically through the legacy facade adapter; the text-mode corruption characterization above it is deliberately KEPT as honest evidence of why the text path is no longer used for binaries. |
 
-Flipped at Stage 03 (now passing, regression-locked):
-- R-01: `TestR01...::test_admin_operations_menu_is_defined_exactly_once` (Stage 02 pair merged into one fixed-behavior test).
-- R-02: `TestR02...::test_main_delegates_to_adb_setup_helpers` + `test_authoritative_loader_raises_typed_error_on_malformed_config` (retargeted to the engine's `ConfigService`; the legacy adapter's non-raising None contract is separately pinned in `test_legacy_module_structure.py`).
-- R-11: `TestTarExtraction::test_tar_traversal_member_rejected_after_hardening` (+ new zip-traversal and symlink-rejection tests; the Stage 02 escape characterization and stale-fallback characterization converted to hardened-behavior assertions with a v2.4-URL regression lock).
+No test was weakened in any flip: each converted test asserts the remediated behavior plus a regression lock, and the new-behavior tests in `test_stage08_engine.py` anchor the same services independently.
+
+Still passing, regression-locked from earlier stages (marker removals recorded in their stage logs): R-01 (`TestR01...::test_admin_operations_menu_is_defined_exactly_once`), R-02 (`test_main_delegates_to_adb_setup_helpers` + typed-loader test), R-11 (traversal-hardening pair), and R-03 (`test_extract_all_dbs_from_dir_is_missing` / `test_phantom_extractors_removed` — flipped at Stage 08 with the A-06 closure: the missing call target and the four phantom extractors are deletions asserted as gone).
 
 ## 9. Guidance for adding tests (Stages 03–16)
 

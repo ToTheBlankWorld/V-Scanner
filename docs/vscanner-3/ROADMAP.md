@@ -59,11 +59,12 @@ Ground rules for all stages:
 **Acceptance criteria:** scan of a faked dataset produces typed findings matching Stage 03 golden data; export files byte-identical to legacy format for same input (regression) or documented improvements; cancel mid-scan works.
 **Delivered (2026-10-18):** scan screen (f) with own discovery/preselect + preflight target revalidation, scope toggles (t system / u deep), single-app input validation (n), honest streamed progress, cancellation (c) with PARTIAL-stream honesty, findings explorer (v/g/o filters+sorts, text filter, [ / ] pagination, per-finding provenance detail); reports screen (h) exporting the last completed bundle through the SC-9 plan (byte-identity regression-tested) + T-08 scan-history table; vscanner/services/history.py counters-only capped JSON store; Stage 04 sec5 wait-vs-delivery race closed test-side (deterministic ordering tests; stress-reproduced 9/4000, no production change). Details in STAGE_07_IMPLEMENTATION_REPORT.md.
 
-## Stage 08 — TUI feature parity and hardening
+## Stage 08 — TUI feature parity and hardening *(COMPLETE)*
 **Scope:** Remaining features: admin ops (uninstall/open/force-stop with confirmations), sensor monitoring (honest data), full device info, screen mirroring launcher, forensics cockpit (byte-safe extractors, case store, redaction default for WiFi PSK), demo/sample mode, error/edge-case hardening.
 **Dependencies:** Stage 07.
 **Exclusions:** no new scanner heuristics beyond legacy; Android app untouched.
 **Acceptance criteria:** parity checklist against `FEATURE_PARITY_MATRIX.md` — every C-Fxx row implemented or explicitly excluded with recorded rationale; no feature regression vs legacy CLI contract; keyboard-only operability test; TUI has no blocking I/O on the event loop (latency check).
+**Delivered (2026-10-18):** live monitoring (m), forensics cockpit (o), mirroring (i), demo data (b), full device info (workspace f), admin ops (workspace u/l/k with re-type confirmation modal), all-engine-reachable screens registry (no placeholders); R-03..R-07 + R-12/R-13 remediations landed (detection-only sensor honesty, deep-scan URL/credential extraction with redacted presentation, verified root tri-state, byte-safe data extraction, WiFi redaction default, service-side confirmation gate); legacy `scanner.py`/`digital_forensics.py` became thin adapters over the engine; engine test volume 66 new cases; TUI smoke + concurrency gates recorded. Details in STAGE_08_IMPLEMENTATION_REPORT.md.
 
 ## Stage 09 — Desktop foundation and design system (PySide6)
 **Scope:** Qt main window, design tokens shared with TUI vocab, layouts, navigation, settings dialog, notifications/status handling, packaging groundwork (app icon, metadata).
