@@ -44,7 +44,8 @@ from vscanner.services.config import ConfigService
 from ui_terminal import sections as reg
 from ui_terminal.backend import DeviceBackend, WorkspaceBackend
 from ui_terminal.theme import (
-    APP_TCSS, SECTION_TCSS, THEME_NAME, VSCANNER_THEME, WORKSPACE_TCSS,
+    APP_TCSS, REPORTS_TCSS, SCAN_TCSS, SECTION_TCSS, THEME_NAME,
+    VSCANNER_THEME, WORKSPACE_TCSS,
 )
 
 __all__ = ["VScannerApp", "VScannerCommands", "main", "SECTION_TCSS", "APP_TCSS"]
@@ -123,7 +124,7 @@ class VScannerApp(App):
     TITLE = "V-Scanner 3.0"
     SUB_TITLE = "Android security auditing"
 
-    CSS = APP_TCSS + SECTION_TCSS + WORKSPACE_TCSS
+    CSS = APP_TCSS + SECTION_TCSS + WORKSPACE_TCSS + SCAN_TCSS + REPORTS_TCSS
     theme = THEME_NAME  # dispatched only after on_mount registers the palette
 
     COMMANDS = {VScannerCommands, get_system_commands_provider}
@@ -132,6 +133,8 @@ class VScannerApp(App):
     BINDINGS = [
         Binding("d", "goto('dashboard')", "Dashboard"),
         Binding("w", "goto('devices')", "Device workspace"),
+        Binding("f", "goto('scan')", "Scanning & findings"),
+        Binding("h", "goto('reports')", "Reports & history"),
         Binding("e", "goto('doctor')", "Doctor"),
         Binding("s", "goto('settings')", "Settings"),
         Binding("f1", "goto('help')", "Help & keys"),
@@ -189,14 +192,21 @@ class VScannerApp(App):
         self._backend.start_pump(self._dispatch_job_event)
 
     def _dispatch_job_event(self, event) -> None:
-        """Loop-thread fan-out: only the visible workspace listens."""
+        """Loop-thread fan-out: only the visible screen listens (gathered
+        per Stage 07 to the scan + reports screens as well)."""
         from vscanner.core.events import JobEvent
+        from ui_terminal.screens.reports import ReportsScreen
+        from ui_terminal.screens.scan import ScanScreen
         from ui_terminal.screens.workspace import DeviceWorkspaceScreen
 
         if not isinstance(event, JobEvent):
             return
         screen = self.screen
         if isinstance(screen, DeviceWorkspaceScreen):
+            screen.on_job_event(event)
+        elif isinstance(screen, ScanScreen):
+            screen.on_job_event(event)
+        elif isinstance(screen, ReportsScreen):
             screen.on_job_event(event)
 
     def _cached_screen(self, section_id: str) -> Screen:

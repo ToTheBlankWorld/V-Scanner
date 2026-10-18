@@ -30,6 +30,8 @@ __all__ = [
     "APP_TCSS",
     "SECTION_TCSS",
     "WORKSPACE_TCSS",
+    "SCAN_TCSS",
+    "REPORTS_TCSS",
     "BRAND_TAGLINE",
     "APP_TITLE",
 ]
@@ -287,6 +289,158 @@ WORKSPACE_TCSS = """
 
 #ws-filter {
     width: 1fr;
+}
+"""
+
+SCAN_TCSS = """
+#scan-header {
+    height: auto;
+    margin-bottom: 1;
+}
+
+#scan-refresh-btn {
+    width: auto;
+    margin-right: 2;
+    border: round $primary;
+}
+
+#scan-target {
+    color: $vs-muted;
+    width: 1fr;
+    content-align: right middle;
+}
+
+#scan-explain, #scan-note {
+    color: $vs-muted;
+    margin-bottom: 1;
+}
+
+#scan-banner {
+    height: auto;
+    margin-bottom: 1;
+}
+
+#scan-devices {
+    height: 1fr;
+    max-height: 8;
+    background: $surface;
+    border: round $panel;
+}
+
+#scan-devices:focus {
+    border: round $primary;
+}
+
+#scan-scope-row {
+    height: auto;
+    margin: 1 0 1 0;
+}
+
+#scan-start-btn, #scan-cancel-btn {
+    width: auto;
+    margin-right: 1;
+    border: round $primary;
+}
+
+#scan-single-btn {
+    width: auto;
+    margin-right: 1;
+    border: round $primary;
+}
+
+#scan-package {
+    width: 1fr;
+}
+
+#scan-scope-state {
+    color: $vs-muted;
+    height: auto;
+    margin-bottom: 1;
+}
+
+#scan-progress {
+    color: $primary;
+    height: auto;
+}
+
+#scan-findings-count {
+    color: $vs-muted;
+    width: 1fr;
+    content-align: right middle;
+}
+
+#scan-findings {
+    height: 1fr;
+    max-height: 14;
+    background: $surface;
+    border: round $panel;
+}
+
+#scan-findings:focus {
+    border: round $primary;
+}
+
+#scan-detail {
+    height: auto;
+    max-height: 18;
+    background: $surface;
+    border: round $panel;
+    padding: 0 1;
+    margin-top: 1;
+}
+
+#scan-detail-title {
+    color: $accent;
+    margin-bottom: 1;
+}
+"""
+
+REPORTS_TCSS = """
+#rp-header {
+    height: auto;
+    margin-bottom: 1;
+}
+
+#rp-input-row {
+    height: auto;
+    margin-bottom: 1;
+}
+
+#rp-export-btn {
+    width: auto;
+    margin-right: 1;
+    border: round $primary;
+}
+
+#rp-output-dir {
+    width: 1fr;
+}
+
+#rp-banner {
+    height: auto;
+    margin-bottom: 1;
+}
+
+#rp-last-scan, #rp-history-note {
+    color: $vs-muted;
+    height: auto;
+    margin-bottom: 1;
+}
+
+#rp-history {
+    height: 1fr;
+    max-height: 12;
+    background: $surface;
+    border: round $panel;
+}
+
+#rp-history:focus {
+    border: round $primary;
+}
+
+#rp-export-result {
+    height: auto;
+    margin-top: 1;
 }
 """
 

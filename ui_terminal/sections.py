@@ -91,6 +91,18 @@ def _devices() -> Screen:
     return DeviceWorkspaceScreen()
 
 
+def _scan() -> Screen:
+    from ui_terminal.screens.scan import ScanScreen
+
+    return ScanScreen()
+
+
+def _reports() -> Screen:
+    from ui_terminal.screens.reports import ReportsScreen
+
+    return ReportsScreen()
+
+
 def _future(section_id: str, title: str, stage: str) -> Section:
     """A later-stage destination rendered as an honest placeholder screen."""
     from ui_terminal.screens.placeholder import PlaceholderFutureScreen, SectionRef
@@ -106,11 +118,11 @@ def _future(section_id: str, title: str, stage: str) -> Section:
 SECTION_REGISTRY: tuple[Section, ...] = (
     Section("dashboard", "Dashboard", "d", "live", "", _dashboard),
     Section("devices", "Device workspace", "w", "live", "", _devices),
+    Section("scan", "Scanning & findings", "f", "live", "", _scan),
+    Section("reports", "Reports & history", "h", "live", "", _reports),
     Section("doctor", "Doctor", "e", "live", "", _doctor),
     Section("settings", "Settings", "s", "live", "", _settings),
     Section("help", "Help & keys", "f1", "live", "", _help),
-    _future("scan", "Scanning & findings", "07"),
-    _future("reports", "Reports & history", "07"),
     _future("monitoring", "Live monitoring", "08"),
     _future("forensics", "Forensics", "08"),
     _future("mirroring", "Mirroring & demo", "08"),

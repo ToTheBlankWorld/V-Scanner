@@ -1,9 +1,11 @@
-# V-Scanner 3.0 — TUI Keymap & Design Tokens (Stage 05)
+# V-Scanner 3.0 — TUI Keymap & Design Tokens (Stages 05–07)
 
-This document is the human-readable contract for the Stage 05 terminal
-interface. The screen-level tests (`tests/unit/test_tui_entry.py`,
-`tests/unit/test_tui_app.py`) verify it against the *actual* navigation
-registry and app bindings, so it cannot silently drift from the code.
+This document is the human-readable contract for the terminal interface
+introduced in Stage 05 and extended in Stages 06 (device workspace) and
+07 (scanning, findings, reports). The screen-level tests
+(`tests/unit/test_tui_entry.py`, `tests/unit/test_tui_app.py`) verify it
+against the *actual* navigation registry and app bindings, so it cannot
+silently drift from the code.
 
 - Launch: `vscanner-tui` (installed entry point) or `python -m ui_terminal`.
 - Non-interactive terminals: the launcher prints a short explanation and
@@ -18,11 +20,11 @@ registry and app bindings, so it cannot silently drift from the code.
 |-----|-------------|--------|
 | d | Dashboard | live (Stage 05) |
 | w | Device workspace | live (Stage 06) |
+| f | Scanning & findings | live (Stage 07) |
+| h | Reports & history | live (Stage 07) |
 | e | Doctor | live (Stage 05) |
 | s | Settings | live (Stage 05) |
 | f1 | Help & keys | live (Stage 05) |
-| — | Scanning & findings | placeholder · Stage 07 |
-| — | Reports & history | placeholder · Stage 07 |
 | — | Live monitoring | placeholder · Stage 08 |
 | — | Forensics | placeholder · Stage 08 |
 | — | Mirroring & demo | placeholder · Stage 08 |
@@ -65,6 +67,50 @@ Honesty behavior in the workspace (also enforced by tests):
   `derived (heuristic)` — no exact-label claim is made.
 - Device info reflects configuration reads and is never presented as a
   security assessment.
+
+## Scanning & findings keys (Stage 07)
+
+| Key | Action |
+|-----|--------|
+| r | Refresh the device list on the scanning screen (one explicit discovery per press) |
+| enter / space on a device row | Select that scan target (never implicit when several are connected) |
+| a | Start a full-device scan for the selected device (cancellable job) |
+| n | Scan one app — asks for a package name, validated before any work starts |
+| t | Toggle system apps on/off for the next scan |
+| u | Toggle deep-scan mode on/off for the next scan |
+| c | Cancel the running scan (a cancel REQUEST — the terminal state decides what is shown) |
+| v | Cycle the findings severity threshold (any → critical+ → … → any) |
+| g | Cycle the findings category filter |
+| o | Cycle the findings sort order (deterministic orders only) |
+| [ / ] | Previous / next findings page (100 findings per page) |
+| (filter input) | Narrow the findings table by title, detail, or package while typing |
+| enter on a finding row | Open the finding detail (kind, evidence sources, remediation, provenance) |
+
+Honesty behavior on the scanning screen (also enforced by tests):
+
+- Progress is only ever reported from real engine events; unknown counts
+  are shown as unknown, never estimated.
+- A cancelled or failed scan keeps whatever findings actually streamed,
+  explicitly labeled as PARTIAL — it never claims a completed assessment.
+- The device target is re-validated immediately before each scan starts;
+  a stale target fails the scan request instead of silently switching.
+- A completed scan appends one counters-only entry to the local scan
+  history (T-08); nothing secret or findings-text is stored.
+
+## Reports & history keys (Stage 07)
+
+| Key | Action |
+|-----|--------|
+| r | Refresh the local scan-history table (T-08 store) |
+| x | Export the last COMPLETED scan bundle through the shared report service |
+| (input) | Output directory for the export (empty = legacy `reports` default) |
+
+- Only the last completed scan of this session is exportable; cancelled
+  or failed scans have no bundle and the panel says so instead of
+  pretending.
+- Successful export lists exactly the paths the service reported
+  (`ExportResult.formats_written`) — nothing is claimed as saved that the
+  service did not write.
 
 ## Global keys
 
@@ -128,9 +174,10 @@ Conventions:
 - Very narrow terminals (< 40 columns) are expected to be uncommon; below
   the collapse thresholds the rail is hidden rather than overlapped.
 
-## Non-goals in Stage 05
+## Non-goals through Stage 07
 
-Device discovery, scanning, findings exploration, remediation, mirroring,
-forensics, and the Windows desktop GUI are deliberately NOT implemented —
-represented only as placeholder navigation destinations owned by
-Stages 06–08. Animation polish is Stage 13.
+Live monitoring, remediation application, mirroring, forensics, and the
+Windows desktop GUI are deliberately NOT implemented — represented only
+as placeholder navigation destinations owned by Stage 08+. Animation
+polish is Stage 13. The scanning screen reports and exports findings,
+but it never *changes* the device.

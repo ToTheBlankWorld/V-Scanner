@@ -24,8 +24,8 @@ from pathlib import Path
 from typing import Mapping, Optional
 
 __all__ = [
-    "app_data_root", "config_dir", "tools_dir", "reports_dir", "ensure_dir",
-    "ENV_OVERRIDE", "ENV_DATA_DIR",
+    "app_data_root", "config_dir", "tools_dir", "reports_dir", "history_dir",
+    "ensure_dir", "ENV_OVERRIDE", "ENV_DATA_DIR",
 ]
 
 ENV_OVERRIDE = "VSCANNER_LOCAL"        # 1 | <path>  → dev-repo/explicit mode
@@ -73,6 +73,15 @@ def tools_dir(env: Optional[Mapping[str, str]] = None) -> Path:
 
 def reports_dir(env: Optional[Mapping[str, str]] = None) -> Path:
     return app_data_root(env) / "reports"
+
+
+def history_dir(env: Optional[Mapping[str, str]] = None) -> Path:
+    """T-08 scan-history location (Stage 07): ``<root>/history``.
+
+    Same A-07 rules as every other data area: the dev-repo override keeps
+    it inside the repo; no directory is created here (creation is the
+    store's explicit job)."""
+    return app_data_root(env) / "history"
 
 
 def ensure_dir(path: Path) -> Path:

@@ -71,14 +71,38 @@ class _Recorder:
     def __init__(self) -> None:
         self.events: list = []
         self.lock = threading.Lock()
+        # Delivery synchronization: ``isinstance`` checks + appends happen
+        # under ``self.lock``, so a Condition sharing it lets tests WAIT for
+        # the *delivered* event set instead of polling (Stage 07 §5 — this
+        # removed the one post-wait delivery race in the suite).
+        self._arrived = threading.Condition(self.lock)
 
     def __call__(self, event) -> None:
-        with self.lock:
+        with self._arrived:
             self.events.append(event)
+            self._arrived.notify_all()
 
     def terminal(self):
         with self.lock:
             return _terminal_events(self.events)
+
+    def wait_delivered(self, predicate, timeout: float = 5.0) -> None:
+        """Block until ``predicate(events)`` holds on DELIVERED events.
+
+        Deterministic synchronization on real event arrival — never used to
+        force a scheduling order, only to observe one after it happened."""
+        with self._arrived:
+            deadline = time.monotonic() + timeout
+            while not predicate(self.events):
+                remaining = deadline - time.monotonic()
+                if remaining <= 0 or not self._arrived.wait(remaining):
+                    raise AssertionError(
+                        "event delivery condition not met within timeout"
+                    )
+
+    def wait_terminal(self, minimum: int = 1, timeout: float = 5.0) -> None:
+        number = lambda events: len(_terminal_events(events))  # noqa: E731
+        self.wait_delivered(lambda events: number(events) >= minimum, timeout)
 
 
 # ---------------------------------------------------------------------------
@@ -279,6 +303,7 @@ class TestCancellation:
         assert handle.state is JobState.RUNNING
         cancel_done.set()
         assert handle.wait(5) is JobState.CANCELLED
+        events.wait_terminal()  # deterministic delivery (Stage 07 §5)
         terminal = events.terminal()
         assert len(terminal) == 1
         assert terminal[0].outcome is JobState.CANCELLED
@@ -304,6 +329,7 @@ class TestCancellation:
         assert queued.wait(5) is JobState.CANCELLED
         gate.set()
         blocker.wait(5)
+        events.wait_terminal()  # deterministic delivery (Stage 07 §5)
         assert not ran.is_set()  # plan body never executed
         assert not [
             e for e in events.events
@@ -615,6 +641,7 @@ class TestConcurrency:
             list(pool.map(lambda _: canceller(), range(4)))
         gate.set()
         handle.wait(5)
+        events.wait_terminal()  # deterministic: delivery actually happened
         assert len([e for e in events.events if e.job_id == handle.id
                     and isinstance(e, JobTerminalEvent)]) == 1
 
@@ -632,6 +659,14 @@ class TestConcurrency:
         plan_done.set()
         handle.cancel()  # races with the worker's success transition
         state = handle.wait(5)
+        # Stage 07 §5 regression fix: ``wait()`` returns as soon as the
+        # terminal STATE is claimed; delivery of the terminal EVENT to
+        # subscribers completes right after. Historically this test counted
+        # the recorder immediately after wait() and could observe ZERO
+        # terminal events under scheduler pressure (stress-reproduced ~9/4000
+        # runs, always state=SUCCEEDED + zero events). Waiting for delivery
+        # removes the post-wait race without changing any assertion.
+        events.wait_terminal()
         terminal = [e for e in events.events
                     if e.job_id == handle.id and isinstance(e, JobTerminalEvent)]
         assert len(terminal) == 1
@@ -640,6 +675,161 @@ class TestConcurrency:
         else:
             assert terminal[0].outcome is JobState.SUCCEEDED
             assert terminal[0].result == "finished"
+
+    # -- deterministic cancel-ordering guarantees (Stage 07 §5) ------------- #
+    # The UI couples its cancel affordance to job outcomes, so the competing
+    # transitions are pinned here in controlled order (synchronization
+    # primitives, never scheduling luck).
+
+    def test_cancel_request_after_running_honest_success_survives(self):
+        """Order: worker claims RUNNING → cancel REQUESTED → plan (without
+        checkpoints) finishes. The documented race resolution keeps the
+        honest SUCCEEDED result; exactly one terminal is delivered."""
+        events = _Recorder()
+        mgr = JobManager()
+        mgr.subscribe(events)
+        gate = threading.Event()
+
+        def plan(ctx):
+            gate.wait(5)
+            return "done"
+
+        handle = mgr.submit(JobKind.OTHER, plan=plan)
+        try:
+            # deterministic: RUNNING was claimed (its Started event arrived)
+            events.wait_delivered(
+                lambda evs: any(isinstance(e, JobStartedEvent)
+                                and e.job_id == handle.id for e in evs))
+            handle.cancel()  # RUNNING → token request only
+            assert handle.state is JobState.RUNNING
+            gate.set()
+            state = handle.wait(5)
+            events.wait_terminal()
+            assert state is JobState.SUCCEEDED
+            terminal = [e for e in events.events if e.job_id == handle.id
+                        and isinstance(e, JobTerminalEvent)]
+            assert len(terminal) == 1
+            assert terminal[0].outcome is JobState.SUCCEEDED
+            assert terminal[0].result == "done"
+        finally:
+            gate.set()
+            handle.wait(5)
+
+    def test_cancel_request_after_running_acknowledged_at_checkpoint(self):
+        """Order: RUNNING claimed → cancel REQUESTED → next checkpoint raises
+        → exactly one CANCELLED terminal naming that checkpoint."""
+        events = _Recorder()
+        mgr = JobManager()
+        mgr.subscribe(events)
+        gate = threading.Event()
+
+        def plan(ctx):
+            gate.wait(5)
+            ctx.cancel_token.checkpoint("between_stages")
+            return "must not complete"
+
+        handle = mgr.submit(JobKind.FULL_DEVICE_SCAN, device_serial="d",
+                            plan=plan)
+        try:
+            events.wait_delivered(
+                lambda evs: any(isinstance(e, JobStartedEvent)
+                                and e.job_id == handle.id for e in evs))
+            handle.cancel()  # REQUEST armed before the checkpoint runs
+            gate.set()       # deterministic: checkpoint now sees the request
+            state = handle.wait(5)
+            events.wait_terminal()
+            assert state is JobState.CANCELLED
+            terminal = [e for e in events.events if e.job_id == handle.id
+                        and isinstance(e, JobTerminalEvent)]
+            assert len(terminal) == 1
+            assert terminal[0].outcome is JobState.CANCELLED
+            assert terminal[0].at_cancellation_point == "between_stages"
+        finally:
+            gate.set()
+            handle.wait(5)
+
+    def test_cancel_vs_failure_race_resolves_to_one_failed_terminal(self):
+        """Order: RUNNING claimed → cancel REQUESTED → plan raises instead of
+        finishing. The honest contract outcome is FAILED (failure owns the
+        result path); cancellation produced no contradictory terminal."""
+        events = _Recorder()
+        mgr = JobManager()
+        mgr.subscribe(events)
+        gate = threading.Event()
+
+        def plan(ctx):
+            gate.wait(5)
+            raise VScannerError("analysis exploded", {"code": "7"})
+
+        handle = mgr.submit(JobKind.OTHER, plan=plan)
+        try:
+            events.wait_delivered(
+                lambda evs: any(isinstance(e, JobStartedEvent)
+                                and e.job_id == handle.id for e in evs))
+            handle.cancel()
+            assert handle.state is JobState.RUNNING
+            gate.set()
+            state = handle.wait(5)
+            events.wait_terminal()
+            assert state is JobState.FAILED
+            terminal = [e for e in events.events if e.job_id == handle.id
+                        and isinstance(e, JobTerminalEvent)]
+            assert len(terminal) == 1
+            assert terminal[0].outcome is JobState.FAILED
+            assert terminal[0].error is not None
+            assert terminal[0].error.message == "analysis exploded"
+        finally:
+            gate.set()
+            handle.wait(5)
+
+    def test_cancel_after_success_is_a_quiet_no_op(self):
+        events = _Recorder()
+        mgr = JobManager()
+        mgr.subscribe(events)
+        handle = mgr.submit(JobKind.OTHER, plan=lambda ctx: "already")
+        assert handle.wait(5) is JobState.SUCCEEDED
+        events.wait_terminal()
+        frozen = list(events.events)
+        handle.cancel()  # terminal job: no state change, no new events
+        assert handle.state is JobState.SUCCEEDED
+        assert events.events == frozen
+        assert len([e for e in frozen if isinstance(e, JobTerminalEvent)]) == 1
+
+    def test_terminal_delivery_completes_after_wait_returns(self):
+        """Semantics pin (Stage 07 §5): ``wait()`` returns when the terminal
+        STATE is claimed; subscriber DELIVERY of the terminal event finished
+        merely while it was still pending. This is a jobs.py correctness
+        property, proven deterministically by a first-position subscriber
+        that holds delivery — never a scheduling race."""
+        release = threading.Event()
+        blocker_entered = threading.Event()
+
+        def blocker(event) -> None:
+            if isinstance(event, JobTerminalEvent):
+                blocker_entered.set()
+                release.wait(5)  # holds _deliver before later subscribers run
+
+        recorder = _Recorder()
+        mgr = JobManager()
+        mgr.subscribe(blocker)     # subscription order = delivery order
+        mgr.subscribe(recorder)
+        handle = mgr.submit(JobKind.OTHER, plan=lambda ctx: "payload")
+        try:
+            state = handle.wait(5)
+            assert state is JobState.SUCCEEDED
+            assert blocker_entered.wait(5), "blocker never saw the terminal"
+            # The terminal state is final but the recorder (subscribed
+            # AFTER the blocker) cannot have received the event yet.
+            assert recorder.terminal() == []
+            release.set()  # deterministically let delivery finish
+            recorder.wait_terminal()
+            terminal = recorder.terminal()
+            assert len(terminal) == 1
+            assert terminal[0].outcome is JobState.SUCCEEDED
+            assert terminal[0].result == "payload"
+        finally:
+            release.set()
+            handle.wait(5)
 
     def test_simultaneous_finding_emissions_keep_per_job_order(self):
         """Two threads racing through the emission path while their job is

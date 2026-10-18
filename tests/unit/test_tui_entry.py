@@ -126,6 +126,55 @@ class TestKeymapDocumentation:
             "the Stage 06 workspace key section must exist"
         )
 
+    def test_scan_screen_bindings_are_documented(self) -> None:
+        """Stage 07: every scanning-screen keybinding has a keymap row."""
+        from ui_terminal.screens.scan import ScanScreen
+
+        doc = self._doc()
+        for binding in ScanScreen.BINDINGS:
+            if isinstance(binding, tuple):
+                key, description = binding[0], binding[1]
+                shown = True
+            else:
+                key, description = binding.key, binding.description
+                shown = binding.show
+            if not shown:
+                # hidden bindings are still documented on purpose
+                assert key in doc, (
+                    f"scan screen binding {key} ({description}) missing "
+                    "from keymap doc"
+                )
+                continue
+            assert key in doc, (
+                f"scan screen binding {key} ({description}) missing "
+                "from keymap doc"
+            )
+        assert "Scanning & findings keys" in doc, (
+            "the Stage 07 scanning key section must exist"
+        )
+
+    def test_reports_screen_bindings_are_documented(self) -> None:
+        """Stage 07: every reports-screen keybinding has a keymap row."""
+        from ui_terminal.screens.reports import ReportsScreen
+
+        doc = self._doc()
+        for binding in ReportsScreen.BINDINGS:
+            if isinstance(binding, tuple):
+                key, description = binding[0], binding[1]
+                shown = True
+            else:
+                key, description = binding.key, binding.description
+                shown = binding.show
+            if not shown:
+                continue
+            assert key in doc, (
+                f"reports screen binding {key} ({description}) missing "
+                "from keymap doc"
+            )
+        assert "Reports & history keys" in doc, (
+            "the Stage 07 reports key section must exist"
+        )
+
     def test_global_keys_table_matches_help_screen_constants(self) -> None:
         from ui_terminal.screens.help import GLOBAL_KEYS
 

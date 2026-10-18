@@ -151,10 +151,12 @@ class TestNavigation:
 
 class TestHonesty:
     async def test_placeholder_has_no_fake_action_buttons(self, make_app) -> None:
+        """Stage 07: the scan/reports sections became live screens; the
+        honesty contract now holds for the remaining future section."""
         app = make_app()
         async with app.run_test() as pilot:
             await pilot.pause()
-            app.switch_to_section("scan")
+            app.switch_to_section("monitoring")
             await pilot.pause()
             body = app.screen.query_one("#vs-body")
             buttons = [b.id for b in body.query(Button) if b.id]
