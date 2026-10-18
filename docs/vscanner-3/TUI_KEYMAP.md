@@ -17,10 +17,10 @@ registry and app bindings, so it cannot silently drift from the code.
 | Key | Destination | Status |
 |-----|-------------|--------|
 | d | Dashboard | live (Stage 05) |
+| w | Device workspace | live (Stage 06) |
 | e | Doctor | live (Stage 05) |
 | s | Settings | live (Stage 05) |
 | f1 | Help & keys | live (Stage 05) |
-| — | Device workspace | placeholder · Stage 06 |
 | — | Scanning & findings | placeholder · Stage 07 |
 | — | Reports & history | placeholder · Stage 07 |
 | — | Live monitoring | placeholder · Stage 08 |
@@ -34,6 +34,37 @@ Pressing escape from any screen returns to the Dashboard.
 Command palette entries mirror this exact list (with the owning stage named
 for future sections) plus "Refresh environment report" and
 "Quit V-Scanner".
+
+## Device workspace keys (Stage 06)
+
+| Key | Action |
+|-----|--------|
+| r | Refresh the device list (explicit; opening the screen runs exactly one discovery) |
+| enter / space on a device row | Select that device (never implicit when several are connected) |
+| a | List installed apps for the selected device (cancellable job) |
+| t | Toggle system apps on/off for the next listing |
+| c | Cancel the running app listing |
+| [ / ] | Previous / next inventory page (100 apps per page) |
+| (filter input) | Narrow the app list by package or label while typing |
+
+Honesty behavior in the workspace (also enforced by tests):
+
+- No automatic refresh: only opening the screen (once) and pressing `r`
+  run the single `adb devices` discovery command.
+- A failed refresh keeps the last successful list on screen, explicitly
+  marked "may be stale" — it never masquerades as a fresh result.
+- Devices that are offline, unauthorized, or in recovery are listed with
+  plain state words and are refused as selection targets with an
+  explanation (details need an authorized, connected device).
+- The details panel prints "unknown" for values the device did not report
+  and "not determined" for root state — the engine's verified probe is a
+  Stage 08 deliverable, so nothing claims rooted or not-rooted today.
+- No phone-number row is displayed: the engine deliberately does not
+  expose one (the legacy CLI showed a hardcoded `N/A` placeholder).
+- App labels are derived from package names and are badged
+  `derived (heuristic)` — no exact-label claim is made.
+- Device info reflects configuration reads and is never presented as a
+  security assessment.
 
 ## Global keys
 

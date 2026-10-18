@@ -42,7 +42,10 @@ from vscanner.core.paths import config_dir, ensure_dir
 from vscanner.services.config import ConfigService
 
 from ui_terminal import sections as reg
-from ui_terminal.theme import APP_TCSS, SECTION_TCSS, THEME_NAME, VSCANNER_THEME
+from ui_terminal.backend import DeviceBackend, WorkspaceBackend
+from ui_terminal.theme import (
+    APP_TCSS, SECTION_TCSS, THEME_NAME, VSCANNER_THEME, WORKSPACE_TCSS,
+)
 
 __all__ = ["VScannerApp", "VScannerCommands", "main", "SECTION_TCSS", "APP_TCSS"]
 
@@ -120,7 +123,7 @@ class VScannerApp(App):
     TITLE = "V-Scanner 3.0"
     SUB_TITLE = "Android security auditing"
 
-    CSS = APP_TCSS + SECTION_TCSS
+    CSS = APP_TCSS + SECTION_TCSS + WORKSPACE_TCSS
     theme = THEME_NAME  # dispatched only after on_mount registers the palette
 
     COMMANDS = {VScannerCommands, get_system_commands_provider}
@@ -128,6 +131,7 @@ class VScannerApp(App):
 
     BINDINGS = [
         Binding("d", "goto('dashboard')", "Dashboard"),
+        Binding("w", "goto('devices')", "Device workspace"),
         Binding("e", "goto('doctor')", "Doctor"),
         Binding("s", "goto('settings')", "Settings"),
         Binding("f1", "goto('help')", "Help & keys"),
@@ -139,6 +143,7 @@ class VScannerApp(App):
     def __init__(
         self,
         config_service: Optional[ConfigService] = None,
+        backend: Optional[DeviceBackend] = None,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -148,6 +153,7 @@ class VScannerApp(App):
             ensure_dir(config_dir())
             config_service = ConfigService(config_dir() / "config.json")
         self._config_service = config_service
+        self._backend = backend or WorkspaceBackend(config_service)
         self._screen_cache: dict = {}
         self.last_doctor_summary: Optional[str] = None
         """Honest doctor summary the dashboard can quote; None = not run."""
@@ -156,6 +162,11 @@ class VScannerApp(App):
     def config_service(self) -> ConfigService:
         """The authoritative config service (R-02): injected in tests."""
         return self._config_service
+
+    @property
+    def backend(self) -> DeviceBackend:
+        """The single UI→engine seam (widgets never touch ADB directly)."""
+        return self._backend
 
     # -- theme ------------------------------------------------------------ #
 
@@ -172,6 +183,21 @@ class VScannerApp(App):
         # so switch_screen (the only navigation primitive we use) is always
         # valid and can never grow the stack beyond two entries.
         self.push_screen(self._cached_screen("dashboard"))
+        # One job-event pump for the whole app (Stage 06): events from the
+        # engine reach the CURRENT screen only, so an unmounted workspace
+        # never accumulates subscriptions.
+        self._backend.start_pump(self._dispatch_job_event)
+
+    def _dispatch_job_event(self, event) -> None:
+        """Loop-thread fan-out: only the visible workspace listens."""
+        from vscanner.core.events import JobEvent
+        from ui_terminal.screens.workspace import DeviceWorkspaceScreen
+
+        if not isinstance(event, JobEvent):
+            return
+        screen = self.screen
+        if isinstance(screen, DeviceWorkspaceScreen):
+            screen.on_job_event(event)
 
     def _cached_screen(self, section_id: str) -> Screen:
         """One reusable instance per section — navigation never duplicates."""
@@ -204,6 +230,12 @@ class VScannerApp(App):
     def action_goto(self, section_id: str) -> None:
         """Binding target for direct navigation keys."""
         self.switch_to_section(section_id)
+
+    async def action_quit(self) -> None:
+        """Quit with engine cleanup: the job engine gets its documented
+        grace (Stage 04 §8); the pump subscription is released first."""
+        self._backend.shutdown_jobs()
+        await super().action_quit()
 
     # App-level compose is not used: screens carry all content (the default
     # screen is built by get_default_screen()).

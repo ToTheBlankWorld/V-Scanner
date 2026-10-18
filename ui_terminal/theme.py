@@ -29,6 +29,7 @@ __all__ = [
     "THEME_NAME",
     "APP_TCSS",
     "SECTION_TCSS",
+    "WORKSPACE_TCSS",
     "BRAND_TAGLINE",
     "APP_TITLE",
 ]
@@ -219,3 +220,73 @@ PlaceholderFuture {
     color: $secondary;
 }
 """
+
+WORKSPACE_TCSS = """
+#ws-header {
+    height: auto;
+    margin-bottom: 1;
+}
+
+#ws-refresh-btn {
+    width: auto;
+    margin-right: 2;
+    border: round $primary;
+}
+
+#ws-updated {
+    color: $vs-muted;
+    width: 1fr;
+    content-align: right middle;
+}
+
+#ws-explain, #ws-security-note {
+    color: $vs-muted;
+    margin-bottom: 1;
+}
+
+#ws-banner, #ws-listing-banner {
+    height: auto;
+    margin-bottom: 1;
+}
+
+#ws-devices, #ws-apps {
+    height: 1fr;
+    background: $surface;
+    border: round $panel;
+}
+
+#ws-devices:focus, #ws-apps:focus {
+    border: round $primary;
+}
+
+#ws-details {
+    height: auto;
+    max-height: 14;
+    background: $surface;
+    border: round $panel;
+}
+
+#ws-selected {
+    margin-top: 1;
+}
+
+#ws-listing {
+    margin-top: 1;
+}
+
+#ws-listing-row {
+    height: auto;
+    margin-bottom: 1;
+}
+
+#ws-list-btn {
+    width: auto;
+    margin-right: 1;
+    border: round $primary;
+}
+
+#ws-filter {
+    width: 1fr;
+}
+"""
+

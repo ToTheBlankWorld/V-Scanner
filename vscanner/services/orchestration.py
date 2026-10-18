@@ -43,6 +43,7 @@ __all__ = [
     "full_device_scan_plan",
     "single_app_scan_plan",
     "app_listing_plan",
+    "app_listing_rows_plan",
     "export_reports_plan",
     "tool_provisioning_plan",
 ]
@@ -85,6 +86,29 @@ def app_listing_plan(
     def plan(context: Any) -> tuple[str, ...]:
         context.cancel_token.checkpoint("before_package_listing")
         return inventory_service.list_packages(include_system=include_system)
+    return plan
+
+
+def app_listing_rows_plan(
+    inventory_service: PackageInventoryService,
+    include_system: bool = False,
+) -> Plan:
+    """APP_LISTING (SC-2, Stage 06 rows): returns documented ``AppInfo``
+    rows (honest ``HEURISTIC`` labels — see
+    ``PackageInventoryService.list_app_rows``). Cancellation boundary is
+    before the listing command, unchanged from ``app_listing_plan``."""
+    def plan(context: Any) -> tuple:
+        context.cancel_token.checkpoint("before_package_listing")
+        rows = inventory_service.list_app_rows(include_system=include_system)
+        # Cooperative post-listing boundary (Stage 06): a cancel request
+        # that arrives while the command ran is acknowledged HERE, so the
+        # job terminalizes as CANCELLED deterministically (request ≠ ack
+        # unless the plan passes a checkpoint).
+        context.cancel_token.checkpoint("after_package_listing")
+        if rows:
+            context.progress(len(rows), len(rows), unit="apps",
+                             context="package listing received")
+        return rows
     return plan
 
 

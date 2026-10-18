@@ -104,6 +104,28 @@ class TestKeymapDocumentation:
             if section.kind == "future":
                 assert f"Stage {section.owner_stage}" in doc
 
+    def test_workspace_screen_bindings_are_documented(self) -> None:
+        """Stage 06: every device-workspace keybinding has a keymap row."""
+        from ui_terminal.screens.workspace import DeviceWorkspaceScreen
+
+        doc = self._doc()
+        for binding in DeviceWorkspaceScreen.BINDINGS:
+            if isinstance(binding, tuple):
+                key, description = binding[0], binding[1]
+                shown = True
+            else:
+                key, description = binding.key, binding.description
+                shown = binding.show
+            if not shown:
+                continue
+            assert key in doc, (
+                f"device workspace binding {key} ({description}) missing "
+                "from keymap doc"
+            )
+        assert "Device workspace keys" in doc, (
+            "the Stage 06 workspace key section must exist"
+        )
+
     def test_global_keys_table_matches_help_screen_constants(self) -> None:
         from ui_terminal.screens.help import GLOBAL_KEYS
 

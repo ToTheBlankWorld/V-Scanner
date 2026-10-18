@@ -7,7 +7,8 @@ so shortcut text can never drift from actual behavior.
 
 Two section kinds exist:
 
-* ``kind="live"`` — implemented screens (dashboard, doctor, settings, help).
+* ``kind="live"`` — implemented screens (dashboard, devices, doctor,
+  settings, help).
 * ``kind="future"`` — later-stage workflows rendered by
   :class:`ui_terminal.screens.placeholder.PlaceholderFutureScreen` with an
   honest "not implemented yet — owned by Stage XX" banner. They never
@@ -84,6 +85,12 @@ def _help() -> Screen:
     return HelpScreen()
 
 
+def _devices() -> Screen:
+    from ui_terminal.screens.workspace import DeviceWorkspaceScreen
+
+    return DeviceWorkspaceScreen()
+
+
 def _future(section_id: str, title: str, stage: str) -> Section:
     """A later-stage destination rendered as an honest placeholder screen."""
     from ui_terminal.screens.placeholder import PlaceholderFutureScreen, SectionRef
@@ -98,10 +105,10 @@ def _future(section_id: str, title: str, stage: str) -> Section:
 
 SECTION_REGISTRY: tuple[Section, ...] = (
     Section("dashboard", "Dashboard", "d", "live", "", _dashboard),
+    Section("devices", "Device workspace", "w", "live", "", _devices),
     Section("doctor", "Doctor", "e", "live", "", _doctor),
     Section("settings", "Settings", "s", "live", "", _settings),
     Section("help", "Help & keys", "f1", "live", "", _help),
-    _future("devices", "Device workspace", "06"),
     _future("scan", "Scanning & findings", "07"),
     _future("reports", "Reports & history", "07"),
     _future("monitoring", "Live monitoring", "08"),

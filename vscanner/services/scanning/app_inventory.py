@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Protocol, Tuple
 
 from vscanner.core.errors import AdbCommandError
-from vscanner.core.models import AppInfo
+from vscanner.core.models import AppInfo, AppLabelSource
 from vscanner.services.scanning.package_parser import (
     derived_label,
     parse_package_dump,
@@ -46,6 +46,51 @@ class PackageInventoryService:
                 stderr_excerpt=result.stderr,
             )
         return parse_pm_list_output(result.stdout)
+
+    def list_app_rows(self, include_system: bool = False,
+                      label_mode: str = "legacy",
+                      timeout: float = _LIST_TIMEOUT) -> Tuple[AppInfo, ...]:
+        """SC-2 listing rows: one command per set, honest heuristic labels.
+
+        Delivers the documented SC-2 row shape (``AppInfo`` with a recorded
+        ``label_source``) without one dumpsys per package (a ≥150-app device
+        would pay 150 subprocess calls — per-app detail stays an explicit
+        ``get_app_info`` action). ``is_system`` is established fact for
+        ``include_system=True`` via the system-only ``pm list packages -s``
+        set; heuristic labels are ``HEURISTIC`` sourced, never badged EXACT.
+
+        ``label_mode="exact-first"`` requests exact labels; the engine has
+        no on-device label reader yet, so the mode degrades honestly to the
+        same HEURISTIC rows (a UI exists to badge "derived", not to claim
+        what it did not obtain).
+        """
+        names = list(self.list_packages(include_system=include_system, timeout=timeout))
+        system_names: set = set()
+        if include_system:
+            sys_result = self._transport.run_text(
+                ["shell", "pm", "list", "packages", "-s"], timeout=timeout,
+            )
+            system_names = set(parse_pm_list_output(sys_result.stdout))
+        rows: list[AppInfo] = []
+        for name in names:
+            try:
+                rows.append(AppInfo(
+                    package_name=name,
+                    label=derived_label(name),
+                    label_source=AppLabelSource.HEURISTIC,
+                    is_system=(name in system_names),
+                ))
+            except ValueError:
+                # Real devices ship non-canonical names (e.g. the framework
+                # package ``android``). The listing must reflect what the
+                # device actually reported — not crash or silently drop it.
+                rows.append(AppInfo.tolerant(
+                    name,
+                    label=derived_label(name),
+                    label_source=AppLabelSource.HEURISTIC,
+                    is_system=(name in system_names),
+                ))
+        return tuple(rows)
 
     def get_app_info(self, package: str, is_system: bool = False,
                      timeout: float = _DUMP_TIMEOUT) -> AppInfo:

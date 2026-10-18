@@ -101,6 +101,16 @@ class ServiceRegistry:
     def inventory(self) -> PackageInventoryService:
         return PackageInventoryService(self.client())
 
+    def device_info(self, serial: Optional[str] = None):
+        """SC-4 face bound to the given (or current) device.
+
+        Narrow Stage 06 accessor: the UI needs DeviceProfile probes for an
+        explicitly selected device; the service composition stays here so
+        widgets never construct transports themselves."""
+        from vscanner.services.adb.device_info import DeviceInfoService
+
+        return DeviceInfoService(self.client(serial))
+
     def scanner(self) -> ScanService:
         return ScanService(self.client())
 

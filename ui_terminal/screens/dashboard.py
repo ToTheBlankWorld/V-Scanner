@@ -75,13 +75,13 @@ class DashboardScreen(ShellScreen):
         doctor = last_doctor or "not run yet — open the doctor to check the environment (press e)"
 
         devices = (
-            "not checked — device probing never runs automatically "
-            "(Stage 06 adds the device workspace)"
+            "not checked — device probing only runs when you open the "
+            "device workspace (press w)"
         )
         return [
             (bridge, bridge_status, "press s · open settings"),
             (doctor, "status-muted", "press e · open doctor"),
-            (devices, "status-muted", "available in a later stage"),
+            (devices, "status-muted", "press w · open device workspace"),
         ]
 
     def refresh_status(self) -> None:

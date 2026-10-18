@@ -192,3 +192,60 @@ class TestImportGraph:
             for name in _iter_vscanner_sources()
         )
         assert total_lines < 6000, f"engine grew to {total_lines} lines"
+
+
+class TestUiSubprocessGuard:
+    """Stage 06: only the sanctioned backend seam may touch subprocess/
+    ADB internals; workspace widgets never run ADB and never shell out."""
+
+    UI_FEEDBACK_MODULES: Tuple[str, ...] = (
+        "ui_terminal.app",
+        "ui_terminal.sections",
+        "ui_terminal.theme",
+        "ui_terminal.jobs_bridge_async",
+        "ui_terminal.screens.workspace",
+        "ui_terminal.screens.shell",
+        "ui_terminal.screens.dashboard",
+        "ui_terminal.screens.doctor",
+        "ui_terminal.screens.settings",
+        "ui_terminal.screens.help",
+        "ui_terminal.screens.placeholder",
+    )
+
+    def _ui_path(self, module_name: str) -> Path:
+        import ui_terminal
+
+        root = Path(ui_terminal.__file__).resolve().parent
+        parts = module_name.split(".")[1:]
+        return root.joinpath(*parts).with_suffix(".py")
+
+    def test_feedback_screens_never_touch_adb_or_subprocess(self):
+        import ast as ast_module
+
+        # the executable module is PATH resolution only (no subprocess, no
+        # transport); the Stage 05 settings screen is sanctioned for it
+        allowed_adb_submodules = {"vscanner.services.adb.executable"}
+        offenders = []
+        for module_name in self.UI_FEEDBACK_MODULES:
+            source = self._ui_path(module_name).read_text(encoding="utf-8")
+            tree = ast_module.parse(source)
+            for node in ast_module.walk(tree):
+                if isinstance(node, ast_module.Import):
+                    if any(alias.name == "subprocess" for alias in node.names):
+                        offenders.append(f"{module_name}: import subprocess")
+                elif isinstance(node, ast_module.ImportFrom):
+                    module = node.module or ""
+                    touched = (
+                        module == "subprocess"
+                        or (
+                            module.startswith("vscanner.services.adb")
+                            and module not in allowed_adb_submodules
+                        )
+                    )
+                    if touched:
+                        offenders.append(f"{module_name}: import {module}")
+        assert offenders == [], (
+            "presentation screens must go through ui_terminal.backend: "
+            f"{offenders}"
+        )
+
