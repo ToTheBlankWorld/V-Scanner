@@ -164,6 +164,6 @@ Persistent stage tracker. Updated at the end of every stage. **A stage may only 
 ### Commit record (Stage 07)
 
 - Code commit: `3e83103` — `feat(tui): add scanning and findings workflows` (15 files, +3642/−35; all text; staged-diff inspected: no binaries, no secrets, no device config, `.gitignore` NOT staged, `cli/` and `android/**` untouched)
-- Push to `origin/main`: *recorded after push*
+- Push to `origin/main`: SUCCESS (HTTPS; `1b51360..8d06d18`, both Stage 07 commits); post-push fetch verified `main` == `origin/main` == `8d06d185f5d4096e8212a86c94febf865255604d`.
 - Docs commit: *TBD* — `docs(progress): record Stage 07 completion` (docs/vscanner-3: PROGRESS, ROADMAP, FEATURE_PARITY_MATRIX, TESTING_STRATEGY, SECURITY_AND_REMEDIATION_PLAN, STAGE_07_IMPLEMENTATION_REPORT).
 
