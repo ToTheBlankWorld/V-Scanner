@@ -496,13 +496,22 @@ class TestLayering:
                     assert "ui_terminal" not in text and "ui_desktop" not in text, path
 
     def test_bridge_stubs_import_no_gui_frameworks(self):
-        forbidden = ("textual", "PySide6", "rich", "tkinter")
+        """Stage 04 layering evolution (Stage 05): ui_terminal may import
+        Textual/Rich (its documented presentation frameworks, A-03); the qt
+        bridge stub (ui_desktop) and every UI package must stay clear of
+        other cross-platform GUI frameworks."""
+        forbidden_everywhere = ("PySide6", "tkinter", "streamlit", "flask")
+        forbidden_in_desktop = forbidden_everywhere + ("textual", "rich")
+        desktop_root = UI_ROOTS[1]
         for root in UI_ROOTS:
+            forbidden = forbidden_in_desktop if root == desktop_root else forbidden_everywhere
             for path in _iter_py(root):
                 tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
                 for node in ast.walk(tree):
                     if isinstance(node, ast.Import):
                         for alias in node.names:
-                            assert alias.name.split(".")[0] not in forbidden, path
+                            assert alias.name.split(".")[0] not in forbidden, \
+                                f"{path.name} imports forbidden framework"
                     elif isinstance(node, ast.ImportFrom) and node.module:
-                        assert node.module.split(".")[0] not in forbidden, path
+                        assert node.module.split(".")[0] not in forbidden, \
+                            f"{path.name} imports forbidden framework"

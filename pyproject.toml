@@ -1,9 +1,10 @@
-# V-Scanner 3.0 — development tooling configuration (updated Stage 03).
+# V-Scanner 3.0 — development tooling configuration (updated Stage 05).
 #
 # Stage 03 adds the [project] packaging table for the new engine package
-# (vscanner/) with its three proven runtime dependencies. Production
-# dependency declarations for the legacy CLI remain in cli/requirements.txt
-# unchanged.
+# (vscanner/) with its three proven runtime dependencies. Stage 05 adds
+# Textual (the TUI presentation layer) and the vscanner-tui entry point.
+# Production dependency declarations for the legacy CLI remain in
+# cli/requirements.txt unchanged.
 # This file also configures pytest, coverage, Ruff and mypy.
 
 [build-system]
@@ -19,7 +20,11 @@ dependencies = [
     "rich>=13.0.0",
     "click>=8.0.0",
     "jinja2>=3.0.0",
+    "textual>=8.2.8,<9",
 ]
+
+[project.scripts]
+vscanner-tui = "ui_terminal.app:main"
 
 [project.optional-dependencies]
 dev = [
@@ -39,6 +44,8 @@ packages = [
     "vscanner.services.reports",
     "vscanner.services.scanning",
     "vscanner.services.tools",
+    "ui_terminal",
+    "ui_terminal.screens",
 ]
 
 [tool.pytest.ini_options]
@@ -46,6 +53,10 @@ minversion = "8.0"
 testpaths = ["tests"]
 addopts = "-ra --strict-markers"
 xfail_strict = true
+# Stage 05: TUI tests run on Textual's headless run_test harness (async);
+# auto mode runs those coroutine tests without per-test markers.
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 # Strict xfails: a passing xfail becomes a hard failure, so a stage that
 # remediates a defect MUST update the marker and the remediation plan row.
 # tarfile emits a Python 3.12 deprecation warning about default extraction
