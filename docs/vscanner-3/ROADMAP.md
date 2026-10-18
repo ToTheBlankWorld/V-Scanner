@@ -40,7 +40,7 @@ Ground rules for all stages:
 **Exclusions:** no UI.
 **Acceptance criteria:** unit tests prove cancellation of a long scan a) stops between apps b) terminates ADB subprocesses c) leaves partial state consistent; event ordering test; benchmark: event overhead < 5 ms/finding in the suite.
 
-## Stage 05 — TUI foundation and visual design
+## Stage 05 - TUI foundation and visual design *(COMPLETE)*
 **Scope:** Textual app shell: startup doctor (provisioning + dependency status as commands, no auto-pip), device status bar, theme, keybindings, navigation, config storage in user directory (with legacy import).
 **Dependencies:** Stage 04 job system.
 **Exclusions:** no device mutating operations yet; legacy CLI remains available.
