@@ -52,8 +52,10 @@ def build_help_section(shell_closes_note: str = "") -> QWidget:
         "Engine", "the shared V-Scanner engine powers the CLI, the TUI and "
                   "this desktop shell; no logic is duplicated in the UI layer"))
     layout.addWidget(MetadataRow(
-        "Stage scope", "Stage 09 delivers the shell, design system, "
-                       "navigation and honest placeholders only"))
+        "Stage scope",
+        "Stages 09–12 deliver the shell, design system, device workspace, "
+        "scanning/findings/reports/history, and the Stage 12 workflows "
+        "(monitoring, forensics, mirroring, demo data, administration)"))
     if shell_closes_note:
         note = QLabel(shell_closes_note)
         note.setObjectName("hintText")
@@ -68,9 +70,12 @@ def build_help_section(shell_closes_note: str = "") -> QWidget:
     layout.addWidget(heading)
     text = QLabel(
         "This desktop shell never launches processes or touches devices "
-        "directly — all ADB and scanning work stays in the shared engine "
-        "(added by later stages). Future sections show honest placeholders: "
-        "no fake results, devices, or security status is displayed anywhere.",
+        "directly — all ADB, scan, extraction and mirroring work stays in "
+        "the shared engine behind its services. Results are always what "
+        "the engine reported (unavailability, failures and refusals shown "
+        "verbatim); nothing is faked, invented, or silently retried, and "
+        "device-side side effects stay behind explicit double-gated "
+        "confirmations.",
         boundaries_panel)
     text.setObjectName("secondaryText")
     text.setWordWrap(True)

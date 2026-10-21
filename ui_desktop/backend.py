@@ -1,5 +1,5 @@
-"""Production desktop-engine adapter (Stage 10) — the Qt counterpart of the
-TUI's ``ui_terminal/backend.py`` workspace seam.
+"""Production desktop-engine adapter (Stage 10; Stage 12 parity seam) — the
+Qt counterpart of the TUI's ``ui_terminal/backend.py`` workspace seam.
 
 Single seam between the Qt layer and the shared engine: widgets never build
 transports, never run subprocesses, and never parse ADB output. The backend
@@ -30,24 +30,33 @@ from typing import Any, Optional, Tuple
 
 from pathlib import Path
 
-from vscanner.core.errors import AdbNotAvailable
+from vscanner.core.errors import AdbNotAvailable, InputValidationError
 from vscanner.core.models import (
     AppScanResult,
     ConnectionInfo,
     DeviceProfile,
+    MirrorHandle,
+    MirrorOptions,
     ScanConfiguration,
     ScanKind,
     ScanRequest,
     ScanResultBundle,
+    SensorReading,
+    ToolId,
+    ToolStatusReflected,
 )
 from vscanner.core.paths import history_dir
 from vscanner.services.config import ConfigService
 from vscanner.services.history import HistoryEntry, ScanHistoryStore
 from vscanner.services.jobs import JobHandle, JobKind, JobManager
 from vscanner.services.orchestration import (
+    admin_op_plan,
     app_listing_rows_plan,
+    demo_scan_plan,
     export_reports_plan,
+    forensics_job_plan,
     full_device_scan_plan,
+    monitoring_session_plan,
     single_app_scan_plan,
 )
 from vscanner.services.registry import ServiceRegistry
@@ -70,6 +79,9 @@ class DesktopBackend:
         # the on-disk T-08 history carries counters, never findings text.
         self._scan_memory: Optional[Tuple[str, Optional[str], Any]] = None
         self._history_obj: Optional[ScanHistoryStore] = None
+        # ONE ScreenMirrorService per target per session (mirroring handle
+        # continuity: launch/list/stop — see _mirror_service).
+        self._mirror_clients: dict[str, Any] = {}
 
     # -- cheap config surface (UI-thread safe) ------------------------------ #
 
@@ -161,6 +173,186 @@ class DesktopBackend:
             if handle.kind is JobKind.APP_LISTING:
                 return handle
         return None
+
+    # -- Stage 08 parity (Stage 12): monitoring / admin / forensics / mirror / demo -- #
+
+    def read_sensors_once(self, serial: str) -> Tuple[SensorReading, ...]:
+        """R-04 honest one-shot sensor read (worker threads only).
+
+        Zero parseable output is a single UNAVAILABLE row with the reason —
+        never invented names or values (the legacy Method-3 fabrication is
+        not ported by the engine and must not be recreated here)."""
+        return self._registry().monitor(serial).read_sensor_values_once()
+
+    def start_monitoring_session(self, serial: str,
+                                 interval_s: float = 2.0) -> JobHandle:
+        """MONITORING_SESSION job (SC-6): polls the honest usage surface on
+        the worker thread and emits typed snapshot payloads until the user
+        stops it or three consecutive polls fail (engine abort)."""
+        plan = monitoring_session_plan(
+            self._registry().monitor(serial), serial, interval_s=interval_s)
+        return self.manager().submit(
+            JobKind.MONITORING_SESSION, device_serial=serial, plan=plan,
+            params_summary={"device": serial, "interval_s": f"{interval_s:g}"},
+        )
+
+    def stop_monitoring(self, serial: str) -> None:
+        """Targeted cancel of the device's monitoring session — a user
+        stopping the monitor must NOT cancel a running scan/listing
+        (unlike ``cancel_device_work``)."""
+        handle = self.active_monitoring_handle(serial)
+        if handle is not None:
+            handle.cancel()
+
+    def active_monitoring_handle(self, serial: str) -> Optional[JobHandle]:
+        for handle in reversed(self.manager().active_for_device(serial)):
+            if handle.kind is JobKind.MONITORING_SESSION:
+                return handle
+        return None
+
+    def start_admin_job(self, serial: str, op: str, package: str,
+                        confirmation: Any) -> JobHandle:
+        """ADMIN_OP job (SC-5): the minted OperationConfirmation travels to
+        the SERVICE gate (R-13) — this backend builds no gate of its own;
+        ConfirmationRequired/Invalid re-raise typed from the service.
+
+        ``op`` is one of the documented engine op names: ``launch_app`` |
+        ``force_stop_app`` | ``uninstall_app`` (the only operations the
+        AdministrationService supports — nothing else is exposed here)."""
+        if op not in ("launch_app", "force_stop_app", "uninstall_app"):
+            raise InputValidationError(
+                f"unsupported administration operation {op!r}",
+                {"field": "op"},
+            )
+        plan = admin_op_plan(self._registry().admin(serial), op, package,
+                             confirmation)
+        return self.manager().submit(
+            JobKind.ADMIN_OP, device_serial=serial, plan=plan,
+            params_summary={"device": serial, "op": op, "package": package},
+        )
+
+    def start_forensics_job(self, serial: str, op: str,
+                            kwargs: Optional[dict] = None) -> JobHandle:
+        """FORENSICS_OP job wrapper (TUI Stage 08 parity); ``op`` maps to
+        documented engine ops: create_case | extract_app_data |
+        system_logs | installed_packages | running_processes |
+        wifi_cleartext | report. The wifi op sends the confirmation token
+        ONLY when the UI obtained the exact typed acknowledgement (the
+        service gate stays effective — acknowledge_cleartext_psk=None keeps
+        the default REDACTED extraction)."""
+        from vscanner.core.errors import InputValidationError as _IVE
+        from vscanner.core.events import OperationConfirmation as _OC
+
+        service = self._registry().forensics(serial)
+        call_kwargs = dict(kwargs or {})
+
+        def _runner(context: Any = None) -> Any:
+            if op == "create_case":
+                return service.create_case(
+                    device_serial=serial,
+                    case_name=call_kwargs.get("case_name", ""),
+                    note=call_kwargs.get("note", ""),
+                    device_model=call_kwargs.get("device_model"),
+                    android_version=call_kwargs.get("android_version"),
+                )
+            case_id = call_kwargs.get("case_id")
+            if not case_id:
+                raise _IVE("forensics op requires case_id",
+                           {"field": "case_id"})
+            manifest = service.load_case(case_id)
+            if op == "extract_app_data":
+                return service.extract_app_data_files(
+                    package=call_kwargs["package"],
+                    sources=tuple(call_kwargs.get(
+                        "sources",
+                        ("databases", "shared_prefs", "files"))),
+                    manifest=manifest,
+                    context=context,
+                )
+            if op == "system_logs":
+                return service.extract_system_logs(manifest)
+            if op == "installed_packages":
+                return service.extract_installed_packages(manifest)
+            if op == "running_processes":
+                return service.extract_running_processes(manifest)
+            if op == "wifi_redacted":
+                # R-12 default: unredacted acknowledgement absent, so the
+                # engine writes the redacted wifi_networks.txt only
+                if "confirmation" in call_kwargs:
+                    raise _IVE(
+                        "the wifi redacted op accepts no acknowledgement "
+                        "(use wifi_cleartext)", {"field": "confirmation"})
+                return service.extract_wifi_networks(manifest)
+            if op == "wifi_cleartext":
+                confirmation = call_kwargs.get("confirmation")
+                if confirmation is not None and \
+                        not isinstance(confirmation, _OC):
+                    raise _IVE(
+                        "wifi cleartext acknowledgement must be an "
+                        "OperationConfirmation", {"field": "confirmation"})
+                return service.extract_wifi_networks(
+                    manifest, acknowledge_cleartext_psk=confirmation)
+            if op == "report":
+                report_path = service.generate_report(manifest)
+                return manifest, report_path
+            raise _IVE(f"unknown forensics op {op!r}", {"field": "op"})
+
+        plan = forensics_job_plan(_runner, f"forensics {op}")
+        summary: dict = {"device": serial, "op": op}
+        if call_kwargs.get("case_id"):
+            summary["case"] = str(call_kwargs["case_id"])[:64]
+        return self.manager().submit(
+            JobKind.FORENSICS_OP, device_serial=serial, plan=plan,
+            params_summary=summary,
+        )
+
+    def forensics_load_case(self, case_id: str) -> Any:
+        """Reopen a saved case manifest by id (worker thread; disk read)."""
+        return self._registry().forensics(None).load_case(case_id)
+
+    def demo_bundle(self) -> Any:
+        """SC-10 deterministic demo bundle — built in-process; NO device,
+        transport, or network is ever created (cheap enough to stay UI-
+        thread safe by construction, exactly like the TUI screen)."""
+        return self._registry().demo().scan()
+
+    def mirror_tool_status(self) -> ToolStatusReflected:
+        """Honest scrcpy tool state from the engine's provisioning face
+        (worker thread; filesystem stats). Mirroring requires the tool to
+        be ``ToolState.VALIDATED`` — anything else must surface as the
+        typed refusal the engine raises on launch."""
+        return self._registry().provisioning().tool_status(ToolId.SCRCPY)
+
+    def _mirror_service(self, serial: str):
+        """ONE ``ScreenMirrorService`` per target per application session.
+
+        The registry ``mirror()`` face constructs a fresh (stateless)
+        service instance on every call; the handle registry — launch/list/
+        stop continuity and honest exit codes — lives on the INSTANCE,
+        so the desktop backend caches one per serial for the session.
+        Mirrors opened outside this session (another tool instance) are
+        still invisible to it and are never claimed."""
+        cached = self._mirror_clients.get(serial)
+        if cached is None:
+            cached = self._registry().mirror(serial)
+            self._mirror_clients[serial] = cached
+        return cached
+
+    def mirror_launch(self, serial: str,
+                      options: MirrorOptions) -> MirrorHandle:
+        """SC-8 launch (worker thread; spawning is process creation)."""
+        return self._mirror_service(serial).launch(options)
+
+    def mirror_list(self, serial: Optional[str]) -> Tuple[MirrorHandle, ...]:
+        """SC-8 registry snapshot (worker thread; process status reads;
+        exit codes are honest when observed)."""
+        return self._mirror_service(serial or "").list_running()
+
+    def mirror_stop(self, serial: str, pid: Optional[int] = None
+                    ) -> Tuple[int, ...]:
+        """Stop the target's mirror(s); returns exactly what the service
+        stopped (pids that received terminate)."""
+        return self._mirror_service(serial).stop(pid)
 
     # -- shutdown ------------------------------------------------------------ #
 

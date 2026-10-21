@@ -21,6 +21,14 @@ and behaviors:
   the backend (full profile on explicit action). Root status preserves
   the honest R-05 tri-state (ROOTED / NOT_ROOTED / UNKNOWN): a transport
   error never becomes a root verdict.
+* Administration (Stage 12, R-13): the engine-supported device-side
+  operations (launch / force-stop / uninstall) dispatch through an
+  operation-specific double gate — the exact package is re-typed in the
+  dialog, the confirmation token is only minted after it, and the
+  target device is freshly revalidated immediately before the ADMIN_OP
+  job reaches the service's own OperationConfirmation gate. Cancel
+  dispatches nothing; duplicates are refused; results distinguish the
+  accepted dispatch from the device's reported return code.
 * The app inventory browser uses the SAME Stage 04 job contracts as the
   TUI (cancellable ``APP_LISTING`` job through ``app_listing_rows_plan``,
   100-per-page pagination, filtering that never mutates the underlying
@@ -41,7 +49,7 @@ system). No widget is touched from a worker thread.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Optional, Sequence
 
 from PySide6.QtCore import (
@@ -55,9 +63,12 @@ from PySide6.QtCore import (
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
+    QDialog,
+    QDialogButtonBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QPushButton,
     QSplitter,
     QTabWidget,
     QTableView,
@@ -66,13 +77,19 @@ from PySide6.QtWidgets import (
 )
 
 from vscanner.core.errors import VScannerError
-from vscanner.core.events import JobKind, JobState, JobTerminalEvent
+from vscanner.core.events import (
+    JobKind,
+    JobState,
+    JobTerminalEvent,
+    OperationConfirmation,
+)
 from vscanner.core.models import (
     AppInfo,
     AppLabelSource,
     ConnectionInfo,
     DeviceProfile,
     DeviceState,
+    OperationResult,
 )
 
 from .. import theme
@@ -318,6 +335,100 @@ class AppsTableModel(QAbstractTableModel):
 
 
 # ===========================================================================
+# Administration confirmations (R-13 desktop gate — Stage 12)
+# ===========================================================================
+
+_ADMIN_OP_WORDS = {
+    "launch_app": "launch",
+    "force_stop_app": "force-stop",
+    "uninstall_app": "uninstall",
+}
+_ADMIN_OP_IMPACT = {
+    "launch_app": "Starts the package's main launcher activity on the "
+                  "device (two-step: query the launcher activity, then "
+                  "am start).",
+    "force_stop_app": "Stops the package's processes on the device "
+                      "(am force-stop) — unsaved app state is lost.",
+    "uninstall_app": "Removes the package and its data from the device "
+                     "(adb uninstall) — this is a REAL device-side "
+                     "removal, not a preview.",
+}
+
+
+class AdminConfirmDialog(QDialog):
+    """Operation-specific R-13 double-confirm (desktop, TUI parity).
+
+    The dialog shows the EXACT operation, package, and target serial, is
+    operation-specific (never a generic "Are you sure?"), and the
+    Proceed action stays disabled until the full package name is typed
+    back exactly. Cancel is a real action: dismissing by any means mints
+    NO confirmation token and dispatches NOTHING.
+    """
+
+    def __init__(self, op: str, package: str, serial: str,
+                 parent: Optional[QWidget] = None) -> None:
+        super().__init__(parent)
+        self._package = package
+        op_word = _ADMIN_OP_WORDS.get(op, op)
+        self.setWindowTitle(f"{op_word} — confirm")
+        self.setModal(True)
+        self.setAccessibleName(f"Confirm {op_word} operation")
+        self.setFixedWidth(520)
+
+        layout = QVBoxLayout(self)
+        layout.setSpacing(theme.SPACING["s"])
+
+        warning = QLabel(
+            f"{op_word.upper()} {package} on {serial}?\n"
+            "Impact: " + _ADMIN_OP_IMPACT.get(op, "device-side change."),
+            self)
+        warning.setObjectName("bodyText")
+        warning.setWordWrap(True)
+        layout.addWidget(warning)
+
+        gate_note = QLabel(
+            "This runs as an ADMIN_OP job against the engine's "
+            "AdministrationService; the operation reaches the device "
+            "only after the service re-validates the confirmation token "
+            "itself (R-13).", self)
+        gate_note.setObjectName("secondaryText")
+        gate_note.setWordWrap(True)
+        layout.addWidget(gate_note)
+
+        prompt = QLabel(
+            "Type the full package name exactly to proceed — Cancel "
+            "(or closing this dialog) dispatches nothing:", self)
+        prompt.setObjectName("secondaryText")
+        prompt.setWordWrap(True)
+        layout.addWidget(prompt)
+
+        self._input = QLineEdit(self)
+        self._input.setPlaceholderText(package)
+        self._input.setAccessibleName("Exact package name confirmation")
+        layout.addWidget(self._input)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok
+            | QDialogButtonBox.StandardButton.Cancel, self)
+        proceed = buttons.button(QDialogButtonBox.StandardButton.Ok)
+        proceed.setText("Proceed")
+        proceed.setEnabled(False)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        self._proceed = proceed
+        self._input.textChanged.connect(self._sync_proceed)
+        layout.addWidget(buttons)
+
+    def _sync_proceed(self, text: str) -> None:
+        # Exact-match binding: the dispatched operation can only reach
+        # the service FOR the package the user re-typed byte for byte.
+        self._proceed.setEnabled(text.strip() == self._package)
+
+    def typed_package(self) -> str:
+        return self._input.text().strip()
+
+
+# ===========================================================================
 # The workspace page
 # ===========================================================================
 
@@ -361,12 +472,21 @@ class DeviceWorkspacePage(QWidget):
         self._apps_stamp: Optional[str] = None
         self._apps_page = 0
 
+        # administration state (Stage 12, R-13) ---------------------------------
+        self._admin_state = "idle"  # idle | revalidating | running | refused | done | failed | cancelled
+        self._admin_note: Optional[str] = None
+        self._admin_job_id: Optional[str] = None
+        self._admin_op: Optional[str] = None
+        self._admin_package: Optional[str] = None
+        self._admin_serial: Optional[str] = None
+
         self._building = False
         self._build_ui()
         # Truthful initial render for every panel (idle, nothing probed).
         self._render_devices_panel()
         self._render_details_panel()
         self._render_apps_panel()
+        self._render_admin()
         self._sync_device_controls()
         # Subscribe ONCE — the shell caches one widget per section, so
         # repeated navigation cannot create duplicate subscriptions.
@@ -539,6 +659,66 @@ class DeviceWorkspacePage(QWidget):
         apps_layout.addLayout(page_row)
         self._tabs.addTab(apps_page, "Installed apps")
 
+        # Administration (Stage 12, R-13): device-side op dispatch gate
+        admin_page = QWidget(self._tabs)
+        admin_layout = QVBoxLayout(admin_page)
+        admin_layout.setContentsMargins(
+            theme.SPACING["l"], theme.SPACING["m"],
+            theme.SPACING["l"], theme.SPACING["l"])
+        admin_layout.setSpacing(theme.SPACING["s"])
+
+        self._admin_gate_banner = QLabel(
+            "Only the engine-supported administration operations are "
+            "shown. Each one is doubly gated: an operation-specific "
+            "confirmation (the exact package name is re-typed there — "
+            "Cancel dispatches nothing) and the service's own "
+            "OperationConfirmation validation. The target device is "
+            "revalidated immediately before dispatch, and the device is "
+            "NEVER selected automatically.", self)
+        self._admin_gate_banner.setObjectName("hintText")
+        self._admin_gate_banner.setWordWrap(True)
+        admin_layout.addWidget(self._admin_gate_banner)
+
+        row = QHBoxLayout()
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(theme.SPACING["m"])
+        package_label = QLabel("&Package:")
+        package_label.setObjectName("secondaryText")
+        self._admin_package_input = QLineEdit(admin_page)
+        self._admin_package_input.setPlaceholderText(
+            "exact package name (typed by you; never auto-filled)")
+        self._admin_package_input.setAccessibleName(
+            "Administration target package")
+        self._admin_package_input.textChanged.connect(
+            lambda _text: self._sync_device_controls())
+        row.addWidget(package_label)
+        row.addWidget(self._admin_package_input, 1)
+
+        admin_buttons = QVBoxLayout()
+        admin_buttons.setContentsMargins(0, 0, 0, 0)
+        admin_buttons.setSpacing(theme.SPACING["xs"])
+        self._admin_buttons: dict[str, QPushButton] = {}
+        for op in ("launch_app", "force_stop_app", "uninstall_app"):
+            op_word = _ADMIN_OP_WORDS[op]
+            op_button = button(
+                f"{op_word.capitalize()} app", variant="secondary",
+                tooltip=f"Impact: {_ADMIN_OP_IMPACT[op]}",
+                accessible_name=f"{op_word} application on the selected device")
+            op_button.clicked.connect(
+                lambda _=False, op=op: self._on_admin_op(op))
+            self._admin_buttons[op] = op_button
+            admin_buttons.addWidget(op_button)
+        row.addLayout(admin_buttons)
+        admin_layout.addLayout(row)
+
+        self._admin_status = QLabel("", self)
+        self._admin_status.setObjectName("secondaryText")
+        self._admin_status.setWordWrap(True)
+        admin_layout.addWidget(self._admin_status)
+
+        admin_layout.addStretch(1)
+        self._tabs.addTab(admin_page, "Administration")
+
         splitter.addWidget(self._tabs)
         outer.addWidget(splitter, 1)
 
@@ -571,6 +751,9 @@ class DeviceWorkspacePage(QWidget):
     # ------------------------------------------------------------------ #
 
     def _on_terminal_event(self, event: JobTerminalEvent) -> None:
+        if event.kind is JobKind.ADMIN_OP:
+            self._on_admin_terminal(event)
+            return
         if event.kind is not JobKind.APP_LISTING:
             return
         # NOTE: JobTerminalEvent carries job_id but NO device_serial —
@@ -692,6 +875,18 @@ class DeviceWorkspacePage(QWidget):
         self._apps_error = None
         self._apps_stamp = None
         self._apps_page = 0
+        self._invalidate_pending_admin_selection(note)
+
+    def _invalidate_pending_admin_selection(self, note: str) -> None:
+        """A vanished/changed target while an admin op is pending
+        refuses the dispatch honestly — nothing is sent to a ghost."""
+        if self._admin_state in ("revalidating", "running"):
+            self._admin_state = "refused"
+            self._admin_note = (
+                f"the target changed ({note}) — nothing was dispatched")
+            self._reset_admin_target()
+            self._render_admin()
+        self._sync_device_controls()
 
     @staticmethod
     def _clear_and_select_flags():
@@ -704,6 +899,8 @@ class DeviceWorkspacePage(QWidget):
         serial = self._devices_model.serial_at(current.row()) \
             if current is not None and current.isValid() else None
         if serial is not None:
+            if serial != self._selected_serial:
+                self._on_admin_target_changed()
             self._selected_serial = serial
             self._invalidation_note = None
             self._profile = None
@@ -717,6 +914,17 @@ class DeviceWorkspacePage(QWidget):
             self._apps_stamp = None
             self._apps_page = 0
         self._sync_device_controls()
+
+    def _on_admin_target_changed(self) -> None:
+        """Selection moved while an admin op was pending (never auto-
+        selected): the pending dispatch is refused honestly."""
+        if self._admin_state in ("revalidating", "running"):
+            self._admin_state = "refused"
+            self._admin_note = (
+                "the selected target changed during confirmation — "
+                "nothing was dispatched")
+            self._reset_admin_target()
+            self._render_admin()
 
     @property
     def selected_serial(self) -> Optional[str]:
@@ -821,6 +1029,194 @@ class DeviceWorkspacePage(QWidget):
         if self._apps_job_serial is None:
             return
         self._backend.cancel_listing_job(self._apps_job_serial)
+
+    # ------------------------------------------------------------------ #
+    # administration ops (Stage 12, R-13 — double-gated, never auto-target)
+    # ------------------------------------------------------------------ #
+
+    def _on_admin_op(self, op: str) -> None:
+        """Open the operation-specific confirm dialog for one op.
+
+        Guards: an explicitly selected, currently DEVICE-state target;
+        a non-empty user-typed package; NO other admin operation pending.
+        Nothing is dispatched here yet — the dialog's Proceed is what
+        moves the flow forward, and only its exact re-typed package
+        passes."""
+        if self._admin_state in ("revalidating", "running"):
+            return  # duplicate submissions are refused, never stacked
+        device = self._selected_row()
+        if device is None or device.state is not _ACTIONABLE:
+            return  # controls disabled in these states; defensive no-op
+        package = self._admin_package_input.text().strip()
+        if not package:
+            self._admin_state = "refused"
+            self._admin_note = (
+                "no package typed — type the exact package name first; "
+                "nothing was dispatched")
+            self._render_admin()
+            return
+        serial = device.serial
+        dialog = AdminConfirmDialog(op, package, serial, self)
+        outcome = dialog.exec()
+        typed = dialog.typed_package() \
+            if outcome == int(dialog.DialogCode.Accepted) else None
+        # Cancel / dismiss / mismatch (Proceed stays disabled until the
+        # input matches) → NO token is minted and NOTHING is dispatched.
+        if typed != package:
+            self._render_admin()
+            return
+        self._admin_op = op
+        self._admin_package = typed
+        self._admin_serial = serial
+        self._admin_state = "revalidating"
+        self._admin_note = "revalidating the target immediately before dispatch…"
+        self._render_admin()
+        self._sync_device_controls()
+        started = self._workers.run(
+            "admin_revalidate",
+            lambda: tuple(self._backend.list_devices()),
+            lambda rows: self._on_admin_revalidated(typed, serial, rows, None),
+            lambda exc: self._on_admin_revalidated(typed, serial, (), exc),
+        )
+        if not started:
+            # revalidation slot busy — refuse honestly, nothing dispatched
+            self._admin_state = "refused"
+            self._admin_note = (
+                "target revalidation is still busy — nothing was "
+                "dispatched; retry once it completes")
+            self._render_admin()
+
+    def _on_admin_revalidated(self, package: str, serial: str,
+                              rows: tuple,
+                              exc: Optional[BaseException]) -> None:
+        """Fresh target validation immediately before execution.
+
+        The device must STILL be present in a fresh, DEVICE-state listing
+        and still be the selected target — a vanished, unauthorized, or
+        re-targeted selection refuses the operation (nothing is sent).
+        Only then is the OperationConfirmation minted (exact
+        ``admin:<op>:<package>`` reference, tz-aware UTC) and the ADMIN_OP
+        job submitted through the AdministrationService gate."""
+        if self._admin_state != "revalidating" or \
+                self._admin_package != package or \
+                self._admin_serial != serial:
+            return  # superseded attempt — never dispatch across states
+        if exc is not None:
+            self._admin_state = "refused"
+            self._admin_note = (
+                f"target revalidation failed: {engine_error_text(exc)} — "
+                "nothing was dispatched")
+            self._reset_admin_target()
+            self._render_admin()
+            self._sync_device_controls()
+            return
+        fresh = any(
+            row.serial == serial and row.state is _ACTIONABLE
+            for row in rows)
+        if not fresh or serial != self._selected_serial:
+            self._admin_state = "refused"
+            self._admin_note = (
+                f"the target {serial} was not revalidated as a connected, "
+                "authorized device — nothing was dispatched")
+            self._reset_admin_target()
+            self._render_admin()
+            self._sync_device_controls()
+            return
+        op = self._admin_op
+        if op is None:
+            return
+        confirmation = OperationConfirmation(
+            reference=f"admin:{op}:{package}",
+            confirmed_at=datetime.now(timezone.utc),
+        )
+        try:
+            handle = self._backend.start_admin_job(
+                serial, op, package, confirmation)
+        except Exception as admin_exc:
+            self._admin_state = "refused"
+            self._admin_note = (
+                f"operation refused before dispatch: "
+                f"{engine_error_text(admin_exc)}")
+            self._reset_admin_target()
+            self._render_admin()
+            self._sync_device_controls()
+            return
+        self._admin_job_id = handle.id
+        self._admin_state = "running"
+        self._admin_note = (
+            f"{_ADMIN_OP_WORDS.get(op, op)} {package} on {serial} "
+            "dispatched through the service gate — running…")
+        self._render_admin()
+        self._sync_device_controls()
+
+    def _reset_admin_target(self) -> None:
+        self._admin_op = None
+        self._admin_package = None
+        self._admin_serial = None
+
+    def _on_admin_terminal(self, event: JobTerminalEvent) -> None:
+        """Honest ADMIN_OP reconciliation (tracked job id only — terminal
+        events carry no device serial)."""
+        if event.job_id != self._admin_job_id:
+            return  # late event from a superseded op — never touch state
+        self._admin_job_id = None
+        op = self._admin_op
+        package = self._admin_package
+        serial = self._admin_serial
+        if event.outcome is JobState.SUCCEEDED:
+            result = event.result
+            if isinstance(result, OperationResult):
+                code = result.adb_returncode
+                self._admin_state = "done" if result.ok else "failed"
+                self._admin_note = (
+                    f"{_ADMIN_OP_WORDS.get(op or '', op or '')} {package} "
+                    f"on {serial}: device reported "
+                    f"return code {code}"
+                    + (f" — {result.message}"
+                       if result.message else "")
+                    + (" — the device acknowledged the dispatch; the "
+                       "engine does not re-verify the effect beyond "
+                       "this reported code"))
+            else:
+                self._admin_state = "done"
+                self._admin_note = f"operation finished ({op or 'op'})"
+        elif event.outcome is JobState.CANCELLED:
+            self._admin_state = "cancelled"
+            self._admin_note = (
+                f"{_ADMIN_OP_WORDS.get(op or '', op or '')} {package} on "
+                f"{serial}: cancelled — the engine's job was aborted "
+                "(the dispatch itself may or may not have completed "
+                "device-side; the job's terminal state is what is "
+                "known)")
+        else:
+            self._admin_state = "failed"
+            self._admin_note = (
+                f"operation failed: "
+                + ("unknown failure" if event.error is None
+                   else engine_error_text(event.error)))
+        self._reset_admin_target()
+        self._render_admin()
+        self._sync_device_controls()
+
+    def _render_admin(self) -> None:
+        label = self._admin_status
+        if self._admin_state == "idle":
+            label.setText(
+                "idle — type the exact package name, then press one "
+                "operation (each opens its own confirmation)")
+        elif self._admin_state == "revalidating":
+            label.setText(self._admin_note or "revalidating the target…")
+        elif self._admin_state == "running":
+            label.setText(self._admin_note or "operation running…")
+        elif self._admin_state == "refused":
+            label.setText(f"REFUSED: {self._admin_note}")
+        elif self._admin_state == "done":
+            label.setText(f"completed: {self._admin_note}")
+        elif self._admin_state == "cancelled":
+            label.setText(f"cancelled: {self._admin_note}")
+        else:  # failed
+            label.setText(f"FAILED: {self._admin_note}")
+
 
     def _on_filter_changed(self, text: str) -> None:
         self._apps_page = 0
@@ -967,6 +1363,20 @@ class DeviceWorkspacePage(QWidget):
         self._cancel_button.setVisible(listing_running)
         self._cancel_button.setEnabled(listing_running)
         self._apps_button.setEnabled(apps_enabled and not listing_running)
+
+        # Administration (Stage 12): device required; one operation at a
+        # time; the package must be user-typed before dispatching.
+        admin_busy = self._admin_state in ("revalidating", "running")
+        admin_reason = reason
+        if admin_reason is None and admin_busy:
+            admin_reason = "another administration operation is active"
+        elif admin_reason is None and \
+                not self._admin_package_input.text().strip():
+            admin_reason = "type the exact package name first"
+        for op, op_button in self._admin_buttons.items():
+            op_button.setEnabled(admin_reason is None)
+            if admin_reason is not None:
+                op_button.setToolTip(admin_reason)
 
         tips = {
             self._details_button: "Operations need an explicitly selected, "

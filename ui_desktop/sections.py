@@ -86,27 +86,40 @@ SECTION_REGISTRY: tuple[DesktopSection, ...] = (
     ),
     DesktopSection(
         "monitoring", "Live monitoring",
-        "Sensors, logs, and connectivity watch",
-        "future", "Stage 12",
-        "Live monitoring ships in Stage 12. No monitoring runs in this stage.",
+        "Sensors, and camera/mic/location usage polls",
+        "live", "",
+        "Host-side, read-only observation of one explicitly selected "
+        "device: honest sensor rows and camera/microphone/location usage "
+        "polls streamed from the monitoring service. This is NOT "
+        "continuous Android background monitoring — each poll is one "
+        "snapshot the user starts and stops explicitly.",
     ),
     DesktopSection(
         "forensics", "Forensics",
-        "Extraction and evidence cockpit",
-        "future", "Stage 12",
-        "Forensics ships in Stage 12. No extraction happens in this stage.",
+        "Case-first extraction and evidence review",
+        "live", "",
+        "Case-first evidence extraction against an explicitly selected "
+        "device: app databases (byte-exact, sha256-recorded), text "
+        "captures, WiFi networks (redacted by default), and report.json. "
+        "Clear-text WiFi secrets require the exact typed acknowledgement "
+        "and only write with the service's own confirmation gate.",
     ),
     DesktopSection(
         "mirroring", "Mirroring",
-        "Screen mirroring and recording",
-        "future", "Stage 12",
-        "Mirroring ships in Stage 12. No screen capture runs in this stage.",
+        "scrcpy screen mirroring lifecycle",
+        "live", "",
+        "Launch, list, and stop a validated scrcpy mirror for an "
+        "explicitly selected device. Requires a VALIDATED scrcpy tool; an "
+        "unvalidated tool is refused honestly. Windows display behavior "
+        "of the real scrcpy window is not verified by this project.",
     ),
     DesktopSection(
         "demo", "Demo data",
         "Generated demo findings",
-        "future", "Stage 12",
-        "Demo data generation ships in Stage 12. Nothing is generated in this stage.",
+        "live", "",
+        "Deterministic demo dataset built in memory by the demo service — "
+        "no device is contacted, no real scan data is touched, every "
+        "finding is labeled [DEMO].",
     ),
     DesktopSection(
         "doctor", "Doctor",

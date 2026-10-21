@@ -13,9 +13,11 @@ What this page REALLY does (everything else is honestly declared absent):
 * A navigation action into the real device workspace (Stage 10). The
   dashboard fabricates nothing about devices: no counts, no connection
   state, no scan/history/security claims. Scanning, findings, reports
-  and history are real Stage 11 sections elsewhere in the shell;
-  monitoring, forensics, mirroring and demo data remain honest
-  future-stage placeholders (owned by Stage 12).
+  and history (Stage 11) and monitoring, forensics, mirroring, demo
+  data and the administration operations (Stage 12) are real sections
+  elsewhere in the shell; the boundaries panel states honestly what the
+  desktop does NOT do (no provisioning UI, no Android background
+  monitoring, no unverified scrcpy-window claims).
 """
 
 from __future__ import annotations
@@ -103,16 +105,18 @@ def _shell_status_panel(
     ready = QLabel(
         f"Desktop shell ready — V-Scanner 3.0 {__version__} "
         "(Stage 09 shell, Stage 10 device workspace, Stage 11 scanning "
-        "& findings, reports & history)")
+        "& findings, reports & history, Stage 12 monitoring, forensics, "
+        "mirroring, demo data & administration)")
     ready.setObjectName("bodyText")
     row.addWidget(ready)
     hint = QLabel(
         "Open the Device workspace to discover connected Android devices, "
-        "read their details and browse their installed apps; the Scanning "
-        "& findings section runs engine scans on an explicitly selected "
-        "device, and Reports & history exports the last completed "
-        "full-device scan. Monitoring, forensics, mirroring and demo data "
-        "are later-stage sections and stay honest placeholders until then.")
+        "read their details, browse their installed apps, and run the "
+        "double-gated administration operations; the Scanning & findings "
+        "section runs engine scans on an explicitly selected device; "
+        "Reports & history exports the last completed full-device scan; "
+        "Live monitoring, Forensics, Mirroring and Demo data provide the "
+        "Stage 12 workflows on their own pages.")
     hint.setObjectName("hintText")
     hint.setWordWrap(True)
     layout.addWidget(hint)
@@ -319,13 +323,25 @@ def _packages_panel() -> Panel:
 def _boundaries_panel() -> Panel:
     panel = Panel()
     layout = Panel.body_layout(panel)
-    _heading(layout, "What later stages will add")
-    for title, stage in (
-        ("Live monitoring, forensics, mirroring, demo data", "Stage 12"),
+    _heading(layout, "Honest boundaries of the desktop shell")
+    for title, detail in (
+        ("No tool-provisioning UI",
+         "scrcpy and ADB tools are provisioned and validated by the "
+         "engine/CLI workflow — the desktop screens show the resulting "
+         "state and refuse honestly when a tool is unvalidated"),
+        ("No Android-side background monitoring",
+         "Live monitoring is host-side, read-only dumpsys polling started "
+         "and stopped explicitly; nothing runs continuously on the device"),
+        ("No verified scrcpy window behavior",
+         "Mirroring launches the real process; whether a window appears "
+         "on screen is scrcpy's own behavior and is never claimed as "
+         "verified by this project"),
+        ("Redaction by default",
+         "Forensics WiFi exports are redacted; the clear-text variant "
+         "requires the exact typed acknowledgement and stays service-"
+         "gated"),
     ):
-        layout.addWidget(MetadataRow(
-            title, f"planned for {stage} — nothing is scanned, collected "
-            "or shown here"))
+        layout.addWidget(MetadataRow(title, detail))
     return panel
 
 

@@ -47,9 +47,13 @@ from .screens import (
     build_dashboard,
     build_doctor,
     build_help_section,
-    build_placeholder,
+    build_placeholder,  # future-row fallback (no rows remain in Stage 12)
 )
+from .screens.demo import DemoPage
 from .screens.devices import DeviceWorkspacePage
+from .screens.forensics import ForensicsPage
+from .screens.mirroring import MirroringPage
+from .screens.monitoring import MonitoringPage
 from .screens.reports import ReportsPage
 from .screens.scan import ScanWorkspacePage
 from .sections import (
@@ -138,7 +142,9 @@ class MainWindow(QMainWindow):
         status.setObjectName("statusBar")
         version_label = QLabel(
             f"v{__version__} — Stage 09 shell + Stage 10 device workspace "
-            "+ Stage 11 scanning, findings, reports & history",
+            "+ Stage 11 scanning, findings, reports & history "
+            "+ Stage 12 monitoring, forensics, mirroring, demo & "
+            "administration",
             status)
         version_label.setObjectName("statusVersion")
         status.addPermanentWidget(version_label)
@@ -305,6 +311,52 @@ class MainWindow(QMainWindow):
                 return ReportsPage(
                     self._backend, self._job_bridge.hub, _parent)
             return build_reports_view
+        if section.section_id == "monitoring":
+            def build_monitoring_view(_parent: QWidget) -> QWidget:
+                if self._backend is None or self._job_bridge is None:
+                    return ErrorState(
+                        "Monitoring unavailable",
+                        "No engine configuration is wired in this launch, "
+                        "so monitoring cannot run. Fix the configuration "
+                        "and restart the desktop shell.")
+                return MonitoringPage(
+                    self._backend, self._job_bridge.hub, _parent)
+            return build_monitoring_view
+        if section.section_id == "forensics":
+            def build_forensics_view(_parent: QWidget) -> QWidget:
+                if self._backend is None or self._job_bridge is None:
+                    return ErrorState(
+                        "Forensics unavailable",
+                        "No engine configuration is wired in this launch, "
+                        "so forensics cannot run. Fix the configuration "
+                        "and restart the desktop shell.")
+                return ForensicsPage(
+                    self._backend, self._job_bridge.hub, _parent)
+            return build_forensics_view
+        if section.section_id == "mirroring":
+            def build_mirroring_view(_parent: QWidget) -> QWidget:
+                if self._backend is None or self._job_bridge is None:
+                    return ErrorState(
+                        "Mirroring unavailable",
+                        "No engine configuration is wired in this launch, "
+                        "so mirroring cannot run. Fix the configuration "
+                        "and restart the desktop shell.")
+                return MirroringPage(
+                    self._backend, self._job_bridge.hub, _parent)
+            return build_mirroring_view
+        if section.section_id == "demo":
+            def build_demo_view(_parent: QWidget) -> QWidget:
+                if self._backend is None:
+                    return ErrorState(
+                        "Demo data unavailable",
+                        "No engine configuration is wired in this launch, "
+                        "so the demo dataset cannot be built. Fix the "
+                        "configuration and restart the desktop shell.")
+                return DemoPage(
+                    self._backend,
+                    open_live=(lambda: self.switch_to("devices")),
+                    parent=_parent)
+            return build_demo_view
         if section.section_id == "doctor":
             def build_doctor_view(_parent: QWidget) -> QWidget:
                 return build_doctor(host_details=self._host_details)

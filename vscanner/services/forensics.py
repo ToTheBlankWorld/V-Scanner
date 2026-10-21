@@ -230,10 +230,15 @@ class ForensicsService:
             dest_dir = case_path / f"{package}_{source}" / source
             dest_dir.mkdir(parents=True, exist_ok=True)
             ok_count = 0
-            for entry in listing.entries:
+            entry_total = len(listing.entries)
+            for entry_index, entry in enumerate(listing.entries):
                 src_path = f"{device_dir}/{entry}"
                 if context is not None:
-                    context.progress(0, 0, unit="files",
+                    # typed progress contract: total must be > 0 or None
+                    # (never a zero total); "current" is the 0-based copy
+                    # index within this source directory
+                    context.progress(entry_index, entry_total,
+                                     unit="files",
                                      context=f"{source}/{entry}")
                 dest = dest_dir / entry
                 record = self._copy_source_bytes(

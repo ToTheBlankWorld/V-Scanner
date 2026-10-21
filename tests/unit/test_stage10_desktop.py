@@ -468,14 +468,15 @@ class TestRegistryState:
         assert section.owner_stage == ""
 
     def test_remaining_future_sections_are_unchanged(self, shell):
-        # Stage 11 moved "scan" and "reports" to live; the remaining future
-        # sections are the Stage 12 set (asserted here to keep the registry
-        # honest against accidental creep).
-        future_ids = {s.section_id for s in reg.future_sections()}
-        assert future_ids == {
-            "monitoring", "forensics", "mirroring", "demo"}
+        # Stage 11 moved "scan" and "reports" to live; Stage 12 moved the
+        # monitoring/forensics/mirroring/demo set to live as well. No
+        # future rows remain (asserted here to keep the registry honest
+        # against accidental creep).
+        assert reg.future_sections() == ()
         assert reg.get_section("scan").kind == "live"
         assert reg.get_section("reports").kind == "live"
+        for section_id in ("monitoring", "forensics", "mirroring", "demo"):
+            assert reg.get_section(section_id).kind == "live"
 
     def test_devices_renders_honest_unavailable_state_without_backend(
             self, shell):
