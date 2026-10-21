@@ -413,6 +413,12 @@ class AdminConfirmDialog(QDialog):
         proceed = buttons.button(QDialogButtonBox.StandardButton.Ok)
         proceed.setText("Proceed")
         proceed.setEnabled(False)
+        # Stage 13: explicit accessible names — the Proceed action is
+        # operation-specific, and the cancel meaning matters for screen
+        # readers (dismissal dispatches nothing).
+        proceed.setAccessibleName(f"{op_word} {package} proceed")
+        cancel = buttons.button(QDialogButtonBox.StandardButton.Cancel)
+        cancel.setAccessibleName("Cancel — dispatches nothing")
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         self._proceed = proceed

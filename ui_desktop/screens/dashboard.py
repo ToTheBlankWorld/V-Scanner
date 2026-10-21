@@ -153,8 +153,7 @@ def _environment_panel(
         error = QLabel(f"Configuration could not be read: {shown_error}")
         error.setObjectName("bodyText")
         error.setWordWrap(True)
-        error.setStyleSheet(
-            f"color: {theme.ERROR_COLOR}; background: transparent;")
+        error.setStyleSheet(theme.feedback_qss("error"))
         layout.addWidget(error)
         config_value = "unreadable (see the error above)"
     else:
@@ -200,6 +199,7 @@ def _adb_panel(
     status_value = QLabel("", panel)
     status_value.setObjectName("secondaryText")
     status_value.setWordWrap(True)
+    status_value.setAccessibleName("ADB tool status")
     status_row.addWidget(status_value, 1)
 
     # Saved path resolution (no probe at read time).

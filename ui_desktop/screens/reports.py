@@ -233,6 +233,7 @@ class ReportsPage(QWidget):
 
         self._export_label = QLabel("", panel)
         self._export_label.setObjectName("secondaryText")
+        self._export_label.setAccessibleName("Export status")
         self._export_label.setWordWrap(True)
         layout.addWidget(self._export_label)
 
@@ -456,14 +457,12 @@ class ReportsPage(QWidget):
                           "the files off the GUI thread)")
         elif self._export_state == "ok":
             label.setText("\n".join(self._export_lines))
-            label.setStyleSheet(
-                f"color: {theme.SUCCESS_COLOR}; background: transparent;")
+            label.setStyleSheet(theme.feedback_qss("success"))
         elif self._export_state == "failed":
             label.setText(
                 f"export failed: {self._export_error} — nothing is claimed "
                 "as saved")
-            label.setStyleSheet(
-                f"color: {theme.ERROR_COLOR}; background: transparent;")
+            label.setStyleSheet(theme.feedback_qss("error"))
         elif self._export_state == "refused":
             # a programmatic refusal carries its reason; a dialog-cancel
             # refusal set its own message on the label already

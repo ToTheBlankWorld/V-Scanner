@@ -32,7 +32,8 @@ __all__ = [
     "WINDOW_BG", "SIDEBAR_BG", "SURFACE_BG", "ELEVATED_BG",
     "BORDER", "SEPARATOR", "SELECTION_BG",
     "TEXT_PRIMARY", "TEXT_SECONDARY", "TEXT_MUTED", "TEXT_ON_ACCENT",
-    "ACCENT", "ACCENT_HOVER", "ACCENT_PRESSED",
+    "ACCENT", "ACCENT_CONTROL", "ACCENT_CONTROL_HOVER",
+    "ACCENT_CONTROL_PRESSED",
     "SUCCESS_COLOR", "WARNING_COLOR", "ERROR_COLOR", "INFO_COLOR",
     "FOCUS_RING", "STATUS_COLORS", "STATUS_LABELS", "STATUS_GLYPHS",
     # layout / type
@@ -58,12 +59,18 @@ SELECTION_BG = "#29344A"    # selected navigation item background
 
 TEXT_PRIMARY = "#E8ECF4"    # headings and primary copy
 TEXT_SECONDARY = "#9FA8B8"  # subtitles, metadata keys, secondary nav items
-TEXT_MUTED = "#6E7686"      # hints, placeholders, disabled/discreet info
+TEXT_MUTED = "#8A93A6"      # hints, placeholders, disabled/discreet info
 TEXT_ON_ACCENT = "#FFFFFF"  # text on the accent fill
 
-ACCENT = "#5B8AF5"          # the single accent family (restrained blue)
-ACCENT_HOVER = "#6C97F7"
-ACCENT_PRESSED = "#4A79E0"
+ACCENT = "#5B8AF5"          # the single accent family (restrained blue).
+                            # Decorative/identity roles: focus ring, brand
+                            # mark, chip glyphs, scrollbar — AA-checked as
+                            # prominent graphic elements on their surfaces
+ACCENT_CONTROL = "#3E6ED8"  # primary interactive fill: same hue, deepened
+                            # so the white button label meets AA text
+                            # contrast (Stage 13 contrast audit)
+ACCENT_CONTROL_HOVER = "#4171DB"
+ACCENT_CONTROL_PRESSED = "#3A63C6"
 FOCUS_RING = ACCENT
 
 # Semantic status colors (paired with textual labels/glyphs — never color
@@ -141,6 +148,31 @@ def status_chip_qss(severity: str) -> str:
         f"color: {color}; font-weight: 600; background: transparent; "
         "border: none; padding: 0;"
     )
+
+
+FEEDBACK_KINDS = ("success", "warning", "error", "info")
+_COLORS_BY_KIND = {
+    "success": SUCCESS_COLOR,
+    "warning": WARNING_COLOR,
+    "error": ERROR_COLOR,
+    "info": INFO_COLOR,
+}
+
+
+def feedback_qss(kind: str) -> str:
+    """Stylesheet fragment for inline feedback text, one color per kind.
+
+    Screens previously repeated ad-hoc ``setStyleSheet("color: ...")``
+    fragments; all of them now route through this helper so the mapping
+    kind → semantic token stays in this module (single color source).
+    Raises on unknown kinds rather than falling back silently.
+    """
+    try:
+        return f"color: {_COLORS_BY_KIND[kind]}; background: transparent;"
+    except KeyError:
+        raise ValueError(
+            f"unknown feedback kind: {kind!r} "
+            f"(expected one of {FEEDBACK_KINDS})") from None
 
 
 # ---------------------------------------------------------------------------
@@ -265,14 +297,19 @@ QPushButton:disabled {{
     background: {SURFACE_BG};
     border-color: {SEPARATOR};
 }}
-QPushButton[variant="primary"] {{
-    background: {ACCENT};
+QPushButton:default {{
+    /* dialog default buttons: distinguished by the accent outline, never
+       by moving controls or changing behavior (Stage 13 §5) */
     border: 1px solid {ACCENT};
+}}
+QPushButton[variant="primary"] {{
+    background: {ACCENT_CONTROL};
+    border: 1px solid {ACCENT_CONTROL};
     color: {TEXT_ON_ACCENT};
     font-weight: 600;
 }}
-QPushButton[variant="primary"]:hover {{ background: {ACCENT_HOVER}; }}
-QPushButton[variant="primary"]:pressed {{ background: {ACCENT_PRESSED}; }}
+QPushButton[variant="primary"]:hover {{ background: {ACCENT_CONTROL_HOVER}; }}
+QPushButton[variant="primary"]:pressed {{ background: {ACCENT_CONTROL_PRESSED}; }}
 QPushButton[variant="primary"]:focus {{ border: 1px solid {TEXT_ON_ACCENT}; }}
 QPushButton[variant="primary"]:disabled {{
     background: {ACCENT};
@@ -292,6 +329,42 @@ QLineEdit:focus {{ border: 1px solid {FOCUS_RING}; }}
 QLineEdit:disabled {{ color: {TEXT_MUTED}; }}
 QCheckBox {{ background: transparent; spacing: 6px; }}
 QCheckBox:disabled {{ color: {TEXT_MUTED}; }}
+
+/* ---- multi-line text views (evidence, logs, copyable diagnostics) ----- */
+QPlainTextEdit, QTextEdit {{
+    background: {ELEVATED_BG};
+    color: {TEXT_PRIMARY};
+    border: 1px solid {BORDER};
+    border-radius: 4px;
+    selection-background-color: {ACCENT};
+    selection-color: {TEXT_ON_ACCENT};
+}}
+QPlainTextEdit:focus, QTextEdit:focus {{ border: 1px solid {FOCUS_RING}; }}
+QPlainTextEdit:disabled, QTextEdit:disabled {{ color: {TEXT_MUTED}; }}
+
+/* ---- combo boxes (findings/report filters, Stage 13) ------------------ */
+/*
+ * Only the box itself is styled: subclass pseudo-elements such as
+ * ``::drop-down``/``::indicator`` are deliberately NOT overridden, because
+ * styling them turns off the native Fusion arrow/indicator rendering and
+ * requires shipping custom images. Keyboard focus gets the accent ring.
+ */
+QComboBox {{
+    background: {ELEVATED_BG};
+    color: {TEXT_PRIMARY};
+    border: 1px solid {BORDER};
+    border-radius: 4px;
+    padding: 5px 8px;
+}}
+QComboBox:focus {{ border: 1px solid {FOCUS_RING}; }}
+QComboBox:disabled {{ color: {TEXT_MUTED}; }}
+QComboBox QAbstractItemView {{
+    background: {ELEVATED_BG};
+    color: {TEXT_PRIMARY};
+    border: 1px solid {BORDER};
+    selection-background-color: {SELECTION_BG};
+    selection-color: {TEXT_PRIMARY};
+}}
 
 /* ---- tabs (device workspace details/apps) ------------------------------ */
 QTabWidget::pane {{
@@ -385,6 +458,18 @@ QScrollBar::handle:vertical {{
 QScrollBar::handle:vertical:hover {{ background: {TEXT_MUTED}; }}
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
 QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{
+    background: transparent;
+}}
+QScrollBar:horizontal {{
+    background: transparent; height: 10px; margin: 0;
+}}
+QScrollBar::handle:horizontal {{
+    background: {BORDER}; min-width: 24px; border-radius: 5px;
+    margin: 2px;
+}}
+QScrollBar::handle:horizontal:hover {{ background: {TEXT_MUTED}; }}
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{ width: 0; }}
+QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {{
     background: transparent;
 }}
 """

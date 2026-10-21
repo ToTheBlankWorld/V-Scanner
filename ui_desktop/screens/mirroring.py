@@ -228,6 +228,7 @@ class MirroringPage(QWidget):
         self._devices_banner = QLabel("", self)
         self._devices_banner.setObjectName("secondaryText")
         self._devices_banner.setWordWrap(True)
+        self._devices_banner.setAccessibleName("Device discovery status")
         self._refresh_button = button(
             "Refresh devices", variant="primary",
             tooltip="Run one adb devices discovery (background worker; "
@@ -242,6 +243,7 @@ class MirroringPage(QWidget):
         self._target_banner = QLabel("", self)
         self._target_banner.setObjectName("bodyText")
         self._target_banner.setWordWrap(True)
+        self._target_banner.setAccessibleName("Mirroring target status")
         outer.addWidget(self._target_banner)
 
         splitter = QSplitter(self)
@@ -273,6 +275,7 @@ class MirroringPage(QWidget):
         self._tool_banner = QLabel("", self)
         self._tool_banner.setObjectName("secondaryText")
         self._tool_banner.setWordWrap(True)
+        self._tool_banner.setAccessibleName("Mirror tool status")
         work_layout.addWidget(self._tool_banner)
 
         lifecycle_row = QHBoxLayout()
@@ -305,6 +308,8 @@ class MirroringPage(QWidget):
         self._lifecycle_banner = QLabel("", self)
         self._lifecycle_banner.setObjectName("secondaryText")
         self._lifecycle_banner.setWordWrap(True)
+        self._lifecycle_banner.setAccessibleName(
+            "Mirroring process status")
         work_layout.addWidget(self._lifecycle_banner)
 
         self._handles_model = HandlesTableModel()

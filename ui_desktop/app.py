@@ -27,6 +27,7 @@ import sys
 from typing import Optional
 
 from PySide6.QtCore import QTimer
+from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import QApplication
 
 from vscanner.core.errors import ConfigError
@@ -59,6 +60,13 @@ def create_application(argv: Optional[list[str]] = None) -> QApplication:
     app.setOrganizationName(APP_NAME)
     app.setStyle("Fusion")
     app.setStyleSheet(theme.build_app_stylesheet())
+    # Stage 13: QLineEdit placeholder color (QSS cannot style the
+    # placeholder text itself; the palette role can). Token-driven, so the
+    # color still lives only in ui_desktop.theme.
+    palette = app.palette()
+    palette.setColor(QPalette.ColorRole.PlaceholderText,
+                     QColor(theme.TEXT_MUTED))
+    app.setPalette(palette)
     return app
 
 

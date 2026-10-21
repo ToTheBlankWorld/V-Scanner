@@ -171,6 +171,7 @@ class DemoPage(QWidget):
         self._summary_label = QLabel("no demo dataset generated yet", self)
         self._summary_label.setObjectName("secondaryText")
         self._summary_label.setWordWrap(True)
+        self._summary_label.setAccessibleName("Demo dataset status")
         table_layout.addWidget(self._summary_label)
 
         self._model = DemoFindingsTableModel()

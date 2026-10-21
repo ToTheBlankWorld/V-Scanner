@@ -702,8 +702,10 @@ class TestMonitoringPage:
         page._poll_button.click()
         assert pump_until(qapp, lambda: page._poll_count >= 1, timeout_s=15)
         assert page._poll_state == "running"
-        assert idents == [GUI_THREAD], \
-            "snapshot delivery must land on the GUI thread exactly once"
+        assert idents and set(idents) == {GUI_THREAD}, \
+            "every snapshot delivery must land ONLY on the GUI thread"
+        assert len(idents) == page._poll_count, \
+            "bridge fan-out: one GUI-thread delivery per counted snapshot"
         rows = page._usage_model.rows
         assert rows, "usage rows must render from the typed snapshot"
         joined = " | ".join(" ".join(row) for row in rows)

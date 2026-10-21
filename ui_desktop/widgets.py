@@ -185,11 +185,11 @@ def button(text: str, *, variant: str = "secondary", tooltip: str = "",
         raise ValueError(f"unknown button variant: {variant!r}")
     widget = QPushButton(text)
     widget.setProperty("variant", variant)
+    # Stage 13: every button exposes an accessible name, even without a
+    # tooltip — auto-derived from the label when none declared explicitly.
+    widget.setAccessibleName(accessible_name or f"{text} button")
     if tooltip:
         widget.setToolTip(tooltip)
-        widget.setAccessibleName(accessible_name or f"{text} button")
-    elif accessible_name:
-        widget.setAccessibleName(accessible_name)
     return widget
 
 

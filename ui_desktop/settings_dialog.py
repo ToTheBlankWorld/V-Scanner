@@ -88,6 +88,8 @@ class SettingsDialog(QDialog):
         self._validate_status = QLabel("", self)
         self._validate_status.setObjectName("hintText")
         self._validate_status.setWordWrap(True)
+        self._validate_status.setAccessibleName(
+            "ADB path validation result")
         validate_row.addWidget(self._validate_button)
         validate_row.addWidget(self._validate_status, 1)
         layout.addLayout(validate_row)
@@ -95,8 +97,8 @@ class SettingsDialog(QDialog):
         self._error_label = QLabel(self)
         self._error_label.setObjectName("hintText")
         self._error_label.setWordWrap(True)
-        self._error_label.setStyleSheet(
-            f"color: {theme.ERROR_COLOR}; background: transparent;")
+        self._error_label.setAccessibleName("Settings error")
+        self._error_label.setStyleSheet(theme.feedback_qss("error"))
         self._error_label.hide()
         layout.addWidget(self._error_label)
 

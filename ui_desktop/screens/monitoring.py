@@ -308,6 +308,7 @@ class MonitoringPage(QWidget):
         self._devices_banner = QLabel("", self)
         self._devices_banner.setObjectName("secondaryText")
         self._devices_banner.setWordWrap(True)
+        self._devices_banner.setAccessibleName("Device discovery status")
         self._refresh_button = button(
             "Refresh devices", variant="primary",
             tooltip="Run one adb devices discovery (background worker; "
@@ -326,6 +327,7 @@ class MonitoringPage(QWidget):
             "always-on device service and no push channel exists.")
         self._scope_banner.setObjectName("hintText")
         self._scope_banner.setWordWrap(True)
+        self._scope_banner.setAccessibleName("Monitoring scope")
         outer.addWidget(self._scope_banner)
 
         self._target_banner = QLabel("", self)

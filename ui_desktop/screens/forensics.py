@@ -278,6 +278,10 @@ class CleartextConfirmDialog(QDialog):
         proceed = buttons.button(QDialogButtonBox.StandardButton.Ok)
         proceed.setText("Proceed")
         proceed.setEnabled(False)
+        # Stage 13: explicit accessible names (see AdminConfirmDialog).
+        proceed.setAccessibleName("Write clear-text PSKs proceed")
+        cancel = buttons.button(QDialogButtonBox.StandardButton.Cancel)
+        cancel.setAccessibleName("Cancel — writes nothing")
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         self._buttons = buttons

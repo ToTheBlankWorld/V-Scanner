@@ -40,6 +40,7 @@ from PySide6.QtWidgets import (
 from vscanner.services.config import ConfigService
 
 from . import __version__, APP_NAME, APP_SUBTITLE
+from . import motion
 from . import theme
 from .backend import DesktopBackend
 from .jobs_bridge_qt import QT_AVAILABLE, QtJobEventBridge
@@ -236,6 +237,13 @@ class MainWindow(QMainWindow):
         self._content_stack.setCurrentIndex(index)
         previous = self._current_id
         self._current_id = section_id
+        if previous and previous != section_id:
+            # Stage 13: one short content fade on *user navigation* only.
+            # The constructor's initial switch happens while the window is
+            # still hidden (nothing to fade), re-selecting the current
+            # section is not a navigation, and reduced motion skips this
+            # entirely (motion.fade_in returns False).
+            motion.fade_in(widget)
         self._nav.select_section(section_id)
         activate = getattr(widget, "activate", None)
         if callable(activate):
