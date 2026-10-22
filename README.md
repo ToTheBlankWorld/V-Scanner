@@ -1,292 +1,151 @@
-# 🔒 V Scanner 2.0 - Mobile Security & Privacy Auditor
+# V-Scanner 3.0
 
-**Enterprise-Grade Android Security Analysis Tool**
-Version 2.0 | Advanced Vulnerability Detection | Real-time Device Analysis
+Android security and privacy auditing for Windows — local-only, free, and
+honest about what it does and does not know.
 
----
-
-## 🚀 Quick Start
-
-### **One Command Installation**
-```bash
-cd cli
-python main.py
-```
-
-That's it! The app will:
-1. ✅ Auto-detect your OS (Windows/macOS/Linux)
-2. ✅ Download ADB automatically
-3. ✅ Download scrcpy automatically
-4. ✅ Cache tools locally for future runs
-5. ✅ Start scanning your device
-
-### **What You Need**
-- Python 3.8+
-- Android device with USB debugging enabled
-- USB cable
+**Status: `3.0.0a0` release candidate.** Core engine and all three user
+surfaces are complete; a Windows release-candidate build is produced and
+audited (see [Release record](#documentation)). **No public release has been
+published yet** — there is no download link in this file, on purpose, because
+none legitimately exists while the release decision is open.
 
 ---
 
-## 📋 Core Features
+## What V-Scanner does
 
-### 🔍 **Vulnerability Scanning**
-- Full device security audit
-- App permission analysis
-- Hardcoded secret detection
-- Suspicious URL patterns
-- SDK compatibility issues
-- Security configuration analysis
+V-Scanner scans an Android device over ADB and audits, from the **host
+computer**:
 
-### 📱 **Device Management**
-- List all installed applications
-- View detailed app permissions
-- Complete device information
-- Device sensor monitoring
-- App management tools
-- Administrative operations
+* installed applications and their permissions (permission knowledge base,
+  SDK incompatibilities and advisories),
+* security-relevant configuration and suspicious patterns (URLs, hardcoded
+  credentials — detected and **redacted**, never rendered),
+* full HTML/JSON/text reports with byte-identical content across the UIs,
+  plus report history,
+* device tools: ADB/scrcpy provisioning (explicit download by you only),
+  screen mirroring, live monitoring polls, forensics case collection
+  (byte-exact extraction with SHA-256 records; WiFi passwords redacted by
+  default, with an explicit opt-in flow), device administration
+  (launch/force-stop/uninstall behind confirmed prompts),
+* a Doctor diagnostics page, an offline Settings screen, and a deterministic
+  demo mode.
 
-### 🔬 **Digital Forensics** (NEW!)
-- Extract app databases (.db files)
-- Extract app shared preferences (settings)
-- Extract app data files
-- Pull system logs (logcat)
-- List installed packages
-- Snapshot running processes
-- Extract WiFi networks
-- Generate forensics case reports
+**Important distinction:** everything above runs on your computer via ADB.
+V-Scanner does **not** include an Android-side background monitoring service
+running on the phone.
 
-### 📊 **Advanced Tools**
-- Deep APK analysis
-- Live screen mirroring
-- Comprehensive security reports
-- Sensor data tracking
-- Demo mode (no device needed)
+Honesty rules are built in: unknown values are shown as `unknown`, cancelled
+or failed operations say so, and deep-scan checks that cannot be confirmed
+report explicit *unverified* status. Nothing is fabricated.
 
----
+## Surfaces
 
-## ⚡ NEW: Embedded Tools System
+| Surface | How to start* |
+|---|---|
+| **Windows desktop app** (PySide6) | `V-Scanner.exe` from the installed app, or `vscanner-desktop` / `python -m ui_desktop` from source |
+| **Terminal UI** (Textual) | `vscanner-tui` or `python -m ui_terminal` |
+| **Menu-driven CLI** (legacy-compatible) | `python cli/main.py` |
 
-**V Scanner now automatically downloads and manages all required tools!**
+*from a source checkout — see §Development. The desktop entry point supports
+`python -m ui_desktop --smoke` for a startup self-check.
 
-### **What Gets Downloaded**
-- 📥 **ADB (60MB)** - From Google's Android SDK
-- 📥 **scrcpy (30MB)** - From GitHub Releases
+Nothing in V-Scanner telephones home. The only network requests possible are
+tool downloads **you** explicitly trigger (ADB platform-tools from
+`dl.google.com`, scrcpy from the official Genymobile GitHub releases).
 
-### **How It Works**
-✓ First run downloads everything automatically
-✓ Tools cached locally → works offline after
-✓ Cross-platform support (Windows/macOS/Linux)
-✓ No admin rights needed
-✓ Zero manual configuration
+## Installation (Windows)
 
-**See [TOOLS_SYSTEM.md](./TOOLS_SYSTEM.md) for details**
+The full, current guide lives in
+[`docs/vscanner-3/WINDOWS_INSTALLATION.md`](docs/vscanner-3/WINDOWS_INSTALLATION.md).
+Summary:
 
----
+1. Obtain the installer `V-Scanner-3.0.0a0-Setup.exe` from a maintainer
+   channel you trust. **There is no published release yet** — this README
+   invents no URL.
+2. Verify its SHA-256 before running (the guide lists the recorded
+   release-candidate hashes and a PowerShell one-liner). The build is
+   unsigned, so expect a SmartScreen warning; verify the hash rather than
+   dismissing the warning blindly.
+3. Install — per user, no admin rights, no Python required. Launch from the
+   Start menu and open the **Doctor** page for diagnostics.
+4. For device features: enable USB debugging on the phone and provision or
+   configure ADB in the app.
 
-## 📥 Installation
+Requirements (as designed, *verified only on Windows 11 x64 build 26200 so
+far*): Windows 10/11 x64; an Android device with USB debugging for device
+features; optional ADB/scrcpy via in-app provisioning or your own install.
 
-### **Step 1: Install Python**
-```bash
-python --version  # Must be 3.8+
-```
+## Data locations and privacy
 
-### **Step 2: Clone Project**
-```bash
-git clone https://github.com/ToTheBlankWorld/V-Scanner.git
-cd V-Scanner
-```
+* App: `%LOCALAPPDATA%\Programs\V-Scanner` (removed by uninstall).
+* User data — config, reports, history, forensics cases, provisioned tools:
+  `%LOCALAPPDATA%\vscanner` (**retained on uninstall**; delete manually only
+  if you want everything gone).
+* No telemetry, no account, no registration, no log files. Findings are
+  redacted by default; forensic case files are not — do not share them
+  casually.
 
-### **Step 3: Install Dependencies**
-```bash
-cd cli
-pip install -r requirements.txt
-```
+## Documentation
 
-### **Step 4: Start Scanner**
-```bash
-python main.py
-```
+| Document | Purpose |
+|---|---|
+| [`docs/vscanner-3/WINDOWS_INSTALLATION.md`](docs/vscanner-3/WINDOWS_INSTALLATION.md) | Install, SmartScreen/verify, ADB & scrcpy, data locations, upgrade/uninstall, troubleshooting |
+| [`docs/vscanner-3/STAGE_16_FINAL_RELEASE_REPORT.md`](docs/vscanner-3/STAGE_16_FINAL_RELEASE_REPORT.md) | The single source-of-truth release record (facts, evidence, disposition) |
+| [`docs/vscanner-3/RELEASE_CHECKLIST.md`](docs/vscanner-3/RELEASE_CHECKLIST.md) | Per-check status grid with evidence and owners |
+| [`CHANGELOG.md`](CHANGELOG.md) | Version history (candidate level) |
+| [`docs/vscanner-3/`](docs/vscanner-3/) | Full stage-by-stage reports (00–15), progress tracker, testing strategy, security review |
+| `TOOLS_SYSTEM.md`, `QUICK_START.md`, `MASTER_README.md` | **Historical 2.0-era CLI documents** — kept for reference; they describe the pre-3.0 tool flow |
 
-**That's it!** Tools will auto-download on first run.
+## Reporting problems
 
----
-
-## 🎮 Usage
-
-### **Main Menu**
-```
-1. 📱 List Applications       - View installed apps
-2. 🔍 Analyze Single App      - Deep security analysis
-3. 🔒 Full Device Scan        - Complete audit
-4. ⚙️  Admin Operations       - App management
-5. 📡 Sensor Monitoring       - Track sensors
-6. ℹ️  Full Device Info       - Device details
-7. 📊 Demo Mode               - See sample results
-8. 🔄 Change Device           - Switch devices
-9. ⚙️  Reconfigure ADB        - Update ADB
-10. 📸 Screen Share            - Live mirroring
-11. ❌ Exit                     - Quit
-```
+Open an issue at the project repository
+(`https://github.com/ToTheBlankWorld/V-Scanner`) with the **Doctor page
+output**, your Windows version, and the step that failed. Do not paste device
+identifiers or sensitive report contents.
 
 ---
 
-## 📊 Report Generation
+## Development
 
-Generates detailed security reports with:
-- Dangerous permissions flagged
-- Outdated SDK detection
-- Hardcoded secrets found
-- Suspicious URLs identified
-- Overall risk assessment
-- Recommendations
+For contributors; the release-candidate desktop app ships standalone and
+needs none of this.
 
----
+* **Python ≥ 3.10.** Install editable with the tool you need:
 
-## 🏗️ Project Structure
+  ```bash
+  pip install -e .            # engine + TUI + CLI surfaces
+  pip install -e .[desktop]   # + PySide6 for the desktop app
+  pip install -e .[dev]       # + pytest/coverage/ruff/mypy
+  ```
 
-```
-V-Scanner/
-├── cli/
-│   ├── tools/                  ← Auto-created
-│   │   ├── platform-tools/     ← ADB
-│   │   └── scrcpy/             ← Screen mirror
-│   ├── main.py                 ← Entry point
-│   ├── scanner.py              ← Scan engine
-│   ├── tools_manager.py        ← NEW: Tool manager
-│   ├── auto_setup.py           ← NEW: Auto setup
-│   ├── requirements.txt
-│   └── ...more files
-├── docs/                       ← Documentation
-├── README.md                   ← This file
-├── TOOLS_SYSTEM.md             ← NEW: Tools guide
-└── QUICK_START.md              ← Quick ref
-```
+* **Run the tests** (no device, no network, no root required; all faked at
+  the transport seam):
 
----
+  ```bash
+  python -m pytest tests -q
+  ```
 
-## 💻 System Requirements
+* **Quality gates** (used per stage; numbers in `docs/vscanner-3/TESTING_STRATEGY.md`):
+  `ruff check .`, `mypy` (tests + engine + UI layers), `compileall`, and
+  `python -m ui_desktop --smoke` (requires `[desktop]`).
+* **Windows packaging** (maintainers, reproduces the release-candidate
+  artifacts): `python -m packaging_windows.build_windows` — see
+  `STAGE_16_FINAL_RELEASE_REPORT.md` §6 for the exact pipeline and cautions
+  (a rebuild replaces build outputs; the recorded artifacts live elsewhere).
+* Architecture and stage history: start with
+  `docs/vscanner-3/PROGRESS.md`, `docs/vscanner-3/TARGET_ARCHITECTURE.md` and
+  `docs/vscanner-3/ARCHITECTURE_DECISIONS.md`, then the per-stage reports.
 
-### **Supported Platforms**
-- ✅ Windows 10/11 (64-bit)
-- ✅ macOS 10.15+ (Intel & M1/M2)
-- ✅ Ubuntu/Debian Linux (64-bit)
+## License
 
-### **Minimum Specs**
-- Python 3.8+
-- 200MB free disk space
-- 512MB RAM
-- Android 7.0+ device
-
-### **Recommended**
-- Python 3.10+
-- 1GB free disk space
-- 2GB RAM
-- Fast internet (first run)
+No LICENSE file is present in this repository and no license is granted or
+claimed. The previous README's "MIT License" footer was factually wrong and
+has been removed. See `docs/vscanner-3/STAGE_16_FINAL_RELEASE_REPORT.md`
+§12 risk row 9: picking and documenting a license is recorded as an
+outstanding decision for the project owner.
 
 ---
 
-## 🔌 Device Connection
-
-### **USB Connection**
-1. Enable USB debugging on device
-2. Connect via USB cable
-3. Tap "Allow" on device
-4. App auto-detects device
-
-### **Wireless Connection (Android 11+)**
-1. Device → Settings → Developer Options
-2. Enable "Wireless Debugging"
-3. Follow app's pairing guide
-4. Enter pairing code & port
-
----
-
-## 🔧 Advanced Usage
-
-### **Check Tool Status**
-```bash
-cd cli
-python -c "from tools_manager import ensure_tools; ensure_tools()"
-```
-
-### **Force Re-download Tools**
-```python
-from tools_manager import setup_adb, setup_scrcpy
-setup_adb()    # Re-download ADB
-setup_scrcpy() # Re-download scrcpy
-```
-
-### **Manual Tool Configuration**
-```bash
-cd cli
-python
->>> from auto_setup import interactive_tool_setup
->>> interactive_tool_setup()
-```
-
----
-
-## 🐛 Troubleshooting
-
-### **ADB not connecting**
-```bash
-cd cli/tools/platform-tools
-./adb kill-server
-./adb start-server
-```
-
-### **Device not detected**
-- Enable USB debugging on device
-- Try a different USB port
-- Restart ADB service
-- Check USB cable
-
-### **scrcpy download fails**
-- Check internet connection
-- Try manual re-download (will retry on next startup)
-- Check disk space
-
-### **Python packages missing**
-```bash
-pip install -r requirements.txt --upgrade
-```
-
----
-
-## 📚 Documentation
-
-- **[TOOLS_SYSTEM.md](./TOOLS_SYSTEM.md)** - Embedded tools system detailed guide
-- **[QUICK_START.md](./QUICK_START.md)** - Quick reference
-- **[MASTER_README.md](./MASTER_README.md)** - Comprehensive guide
-- **[docs/](./docs/)** - Technical documentation
-
----
-
-## 🔒 Security & Privacy
-
-- ✅ **Local only** - No data sent anywhere
-- ✅ **No registration** - No account needed
-- ✅ **Privacy respecting** - Honors device settings
-- ✅ **Open source** - Audit the code
-- ✅ **No telemetry** - No tracking
-
----
-
-## 📄 License
-
-MIT License - See LICENSE file for details
-
----
-
-## 🙏 Credits
-
-- [scrcpy](https://github.com/Genymobile/scrcpy) - Screen mirroring
-- [Android SDK](https://developer.android.com/) - ADB tool
-- [Rich](https://rich.readthedocs.io/) - Terminal UI
-- [Click](https://click.palletsprojects.com/) - CLI framework
-
----
-
-**Version:** 2.0
-**Last Updated:** March 17, 2026
-**Status:** Production Ready ✅
+**V-Scanner 3.0 (`3.0.0a0`)** · development branch: `main` · release status:
+NOT READY for distribution (documentation stage complete; publication awaits
+separate authorization) — see `docs/vscanner-3/STAGE_16_FINAL_RELEASE_REPORT.md` §13.
