@@ -34,7 +34,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
 
-from PySide6.QtCore import QItemSelectionModel
+from PySide6.QtCore import QObject, QItemSelectionModel
 from PySide6.QtWidgets import QApplication, QDialog
 
 from test_stage10_desktop import (  # noqa: E402
@@ -476,6 +476,29 @@ def _bridge(backend: DesktopBackend) -> QtJobEventBridge:
 _OPEN_PAGES: List[Any] = []
 
 
+class _SnapshotReceiver(QObject):
+    """Production-shaped hub observer for GUI-thread delivery assertions.
+
+    Every hub observer in the shipped screens is a bound method of a
+    GUI-thread ``QObject`` (see MonitoringPage/DevicesPage ``connect``);
+    this observer mirrors that shape exactly.  A bare Python lambda was
+    used here originally, but under PySide6 a plain-callable receiver is
+    a ``GlobalReceiver`` whose queued metacall event was observed to be
+    lost (never delivered, even after further event pumps) roughly once
+    in ~55 cross-thread deliveries — a PySide6 bind-path artifact, not an
+    app event-flow problem (the hub emitted once and the production-shaped
+    page receiver received it).  Assertions below are unchanged.
+    """
+
+    def __init__(self, hub: Any) -> None:
+        super().__init__()
+        self.idents: List[int] = []
+        hub.snapshot.connect(self.on_snapshot)
+
+    def on_snapshot(self, event: object) -> None:
+        self.idents.append(threading.get_ident())
+
+
 def _track_page(page: Any) -> Any:
     _OPEN_PAGES.append(page)
     return page
@@ -696,12 +719,11 @@ class TestMonitoringPage:
         page, backend, bridge = fresh_monitoring(
             qapp, config_service, backend_factory, transport)
         auto_discover(qapp, page)
-        idents: List[int] = []
-        bridge.hub.snapshot.connect(
-            lambda event: idents.append(threading.get_ident()))
+        receiver = _SnapshotReceiver(bridge.hub)
         page._poll_button.click()
         assert pump_until(qapp, lambda: page._poll_count >= 1, timeout_s=15)
         assert page._poll_state == "running"
+        idents = receiver.idents
         assert idents and set(idents) == {GUI_THREAD}, \
             "every snapshot delivery must land ONLY on the GUI thread"
         assert len(idents) == page._poll_count, \

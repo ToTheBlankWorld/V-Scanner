@@ -91,6 +91,8 @@ features; optional ADB/scrcpy via in-app provisioning or your own install.
 |---|---|
 | [`docs/vscanner-3/WINDOWS_INSTALLATION.md`](docs/vscanner-3/WINDOWS_INSTALLATION.md) | Install, SmartScreen/verify, ADB & scrcpy, data locations, upgrade/uninstall, troubleshooting |
 | [`docs/vscanner-3/STAGE_16_FINAL_RELEASE_REPORT.md`](docs/vscanner-3/STAGE_16_FINAL_RELEASE_REPORT.md) | The single source-of-truth release record (facts, evidence, disposition) |
+| [`docs/vscanner-3/RELEASE_READINESS_REPORT.md`](docs/vscanner-3/RELEASE_READINESS_REPORT.md) | Release-readiness assessment: quality-gate numbers, artifact provenance, findings ledger, verdict |
+| [`docs/vscanner-3/PUBLIC_RELEASE_DRAFT.md`](docs/vscanner-3/PUBLIC_RELEASE_DRAFT.md) | Pre-publication draft of the future release notes (not a release; nothing is published while this exists) |
 | [`docs/vscanner-3/RELEASE_CHECKLIST.md`](docs/vscanner-3/RELEASE_CHECKLIST.md) | Per-check status grid with evidence and owners |
 | [`CHANGELOG.md`](CHANGELOG.md) | Version history (candidate level) |
 | [`docs/vscanner-3/`](docs/vscanner-3/) | Full stage-by-stage reports (00–15), progress tracker, testing strategy, security review |
