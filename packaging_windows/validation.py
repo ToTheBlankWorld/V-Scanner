@@ -232,6 +232,27 @@ def validate_distribution(
             f"({len(violations)} entries, first: {violations[0]})"
         )
 
+    extras = sorted(
+        path.name for path in files
+        if path.suffix == ".exe" and path.name.lower() != executable_name.lower()
+    )
+    if extras:
+        raise ValidationError(
+            "distribution contains unexpected executable file(s): "
+            f"{', '.join(extras)} — a standalone release ships exactly one "
+            f"exe ({executable_name}); investigate before distributing"
+        )
+    stray_python = sorted(
+        path.name for path in files if path.suffix in (".py", ".pyc", ".pyo")
+    )
+    if stray_python:
+        raise ValidationError(
+            "distribution contains Python source/bytecode file(s): "
+            f"{', '.join(stray_python)} — a Nuitka standalone build must "
+            "ship compiled closures only; a stray .py indicates a staging "
+            "or packaging fault"
+        )
+
     return DistReport(
         executable=executable,
         dlls_found=dlls_found,

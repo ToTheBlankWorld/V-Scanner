@@ -114,10 +114,15 @@ def fake_iscc_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[N
 
 
 def _fake_dist(tmp_path: Path, *, with_closure: bool = True) -> Path:
-    """A minimal distribution standing in for the compiled one."""
+    """A minimal distribution standing in for the compiled one.
+
+    Mirrors the real Nuitka standalone shape (Stage 15 audit): compiled
+    closures only — no ``.py``/``.pyc`` land inside the dist, exactly one
+    ``.exe`` (the app itself), and the PySide6 bindings as native modules.
+    """
     dist = tmp_path / "dist"
     (dist / "PySide6" / "plugins" / "platforms").mkdir(parents=True)
-    (dist / "PySide6" / "__init__.py").write_text("", encoding="utf-8")
+    (dist / "PySide6" / "__init__.pyd").write_bytes(b"")
     (dist / EXECUTABLE_NAME).write_bytes(b"MZ" + b"\x00" * 64)
     if with_closure:
         (dist / "python312.dll").write_bytes(b"PK")
