@@ -101,7 +101,7 @@ select = ["E9", "F63", "F7", "F82", "E722", "F811", "F841", "B006", "B015", "B01
 # the bridge stubs (ui_terminal/ui_desktop — framework-free adapter layers).
 # Legacy cli/ imports are followed "silently" (errors inside legacy code stay
 # suppressed until each module migrates), while unresolved imports surface.
-files = ["tests", "vscanner", "ui_terminal", "ui_desktop"]
+files = ["tests", "vscanner", "ui_terminal", "ui_desktop", "packaging_windows"]
 mypy_path = "cli"
 follow_imports = "silent"
 ignore_missing_imports = true
