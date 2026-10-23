@@ -41,21 +41,24 @@ not invented persons. Full evidence trail: `STAGE_14_IMPLEMENTATION_REPORT.md`,
 | 20 | Installer lifecycle hygiene on the host | **PASS** | 0 scheduled tasks / 0 services / 0 Run-key entries enumerated; per-user location; no elevation recorded (Stage 15 §7) | Vertical escalation or persistence side-effects | Packaging maintainer | Re-verify if the ISS contract changes | Recommended |
 | 21 | Installer determinism (same-machine) | **PASS** | Revalidated in the readiness phase: ISCC 6.7.3 recompile of the committed ISS is byte-identical to the Stage 14 artifact (`ac9229aedb574ec0…` — root-caused: the pipeline passes `derive_version_quad` to the resource-version define; two fresh compiles are byte-identical to each other, and one byte-for-byte recompile matched the artifact fully). Kinds of reproducibility split recorded; same-machine only | None on same machine; clean-runner reproducibility remains unclaimed (see #11) | Packaging maintainer | Covered by #11's CI follow-up | Recommended |
 | 22 | Artifact availability + integrity (recorded vs. rechecked) | **PASS** | Both artifacts present and rechecked in Stage 16 and at readiness-phase start: exe `1bf3eb42…27c637` (17,127,936 B), installer `ac9229ae…25bc` (25,010,550 B); dist closure 64 files (41 dll / 22 pyd / 1 exe / 0 py); no rebuild performed; installer bit-identity re-verified (see #21) | Artifact drift would invalidate every downstream claim | Packaging maintainer | Recheck hashes at publication time, against the published files | Mandatory |
-| 23 | Packaged-app ADB spawn (finding F-2) | **FAIL** | On the verified build host, the packaged app could not spawn the saved ADB path — Dashboard check honestly reports "the saved path did not launch a working adb" and device discovery fails with a WinError 5 access-denied spawn — while the identical path from a plain shell exits 0 (adb 36.0.2). Evidence: `RELEASE_READINESS_REPORT.md` §7/§8 | On affected hosts the packaged app cannot drive any adb-based workflow (discovery, monitoring, forensics, mirroring preflight), contradicting expectations set by Stage 14/15 spawn test-locks (fake-process harness) | Packaging maintainer | Reproduce cross-host (clean VM / second machine), identify the packaged-model process-creation difference (environment/token/security-agent hypothesis unproven), fix or ship as a documented limitation with maintainer acceptance; the app's own honest FAILING banner is correct behavior | Mandatory |
+| 23 | Packaged-app ADB launch (finding F-2 — **investigated & fixed**) | **PASS** | Root-caused 2026-10-23 (`F2_ADB_LAUNCH_INVESTIGATION.md`): the saved path was the platform-tools *directory*, and every ADB launch path spawned it verbatim; Windows refuses to CreateProcess a directory (`PermissionError`/`WinError 5` — deterministic OS behavior, not AV/packaging; the earlier host-environment hypothesis is refuted by a standalone reproduction with the sibling `adb.exe` exiting 0). Fixed at the engine choke points (directory-shaped saved path resolves to its adb executable; process-creation failures now typed, never raw in UI banners); 8 regression tests in `test_services_adb.py`. Candidate build validated at the installed layer on this host: silent install exit 0, installed exe hash-identical to the candidate exe (`cbdf5b67c065ee474d3cd33555367715f6c7c69c8513cdb0daf65eac90848f3f`), Dashboard probe reports **OK — validated**, Device-workspace refresh reports **OK — 1 device(s) reported** with the real device honestly listed | The fix is in the **candidate build only** — the historical Stage 14 artifacts do not contain it; publication must point at the candidate hashes (candidate installer `1a9f315f5ee6e70f933908fcd8a58530613b3c574988c0bc61bcc2658459e5cb`), recorded in the investigation report §8 | Packaging maintainer | Publish from the F-2 candidate build (or later); keep the directory-resolution regression locked | Mandatory |
 | 24 | Doctor frozen-runtime dependency honesty (finding F-1) | **PARTIAL** | In the packaged exe the Doctor page reports rich/click as "NOT INSTALLED" while jinja2 reports installed (frozen executables expose no importlib package metadata), and its "pip install -e ." instruction is meaningless in a packaged app; cosmetically misleading, functionally inert | A diagnostics screen suggests a remediation that cannot work for packaged users | Packaging maintainer | Make the frozen build state explicit in Doctor (or embed the diagnostic truth at build time) and reword the remediation for packaged users | Recommended |
 
-## Blocking set (readiness assessment, 2026-10-22)
+## Blocking set (readiness assessment, 2026-10-22; F-2 amended 2026-10-23)
 
 The readiness disposition in `RELEASE_READINESS_REPORT.md` §1 is **NOT READY
 for publication**, driven by: missing project LICENSE + no maintainer
 acceptance of recorded limitations (owner decisions); #13/#14 publication
 items BLOCKED pending separate authorization; #2/#3 environment BLOCKED and
-#15 reviewer NOT TESTED (no reviewer exists); #23 (F-2 packaged-app adb spawn)
-**FAIL** — the one engineering defect on the list — pending cross-host
-re-verification; and the PARTIAL human-environment checks #4 (Help & keys),
-#6–#8, #10. Everything else is PASS and reflects what is solid: the full
-installer lifecycle, the artifact chain with re-validated same-machine
-bit-identity, the locked security regressions, the lockfile, and the
-concluded intermittent-test investigation. The Stage 16 disposition record
+#15 reviewer NOT TESTED (no reviewer exists); and the PARTIAL
+human-environment checks #4 (Help & keys), #6–#8, #10. **F-2 (#23) is
+resolved** as of 2026-10-23 (root-caused as a directory-shaped saved launch
+path + fixed + candidate build validated; see
+`F2_ADB_LAUNCH_INVESTIGATION.md`) — publication must therefore use the
+candidate artifacts, not the historical Stage 14 ones. Everything else is
+PASS and reflects what is solid: the full installer lifecycle, the artifact
+chain with re-validated same-machine bit-identity, the locked security
+regressions, the lockfile, and the concluded intermittent-test
+investigation. The Stage 16 disposition record
 (`STAGE_16_FINAL_RELEASE_REPORT.md` §13) remains historically accurate for
-that phase; this register supersedes it for the current phase.
+that phase; this register supersedes it for the current phase(s).

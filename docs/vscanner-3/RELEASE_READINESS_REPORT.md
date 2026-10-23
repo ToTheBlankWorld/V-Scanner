@@ -228,18 +228,23 @@ prefix `D343B546387170C3…`) with stable content including the saved `adb_path`
   to install). Cosmetic honesty defect of a diagnostics screen; no functional
   impact on scanning/monitoring. Owner: packaging maintainer (make the
   packaged build embed the truth, or detect the frozen state and say so).
-- **F-2 — Packaged app cannot spawn adb on this host.** The Dashboard's
-  availability check on the saved path reports "the saved path did not launch
-  a working adb", and device discovery cannot spawn it either — both fail
-  with a WinError 5 (access denied) spawn failure, while the identical launch
-  from a plain shell exits 0. Host-environment-bound in nature (process-
-  creation differences of the packaged app on this machine — e.g. an active
-  security agent or launch-environment difference — are the standing
-  hypothesis, unproven). Consequence: on affected hosts the packaged app
-  cannot drive any adb-based workflow. Owner: packaging maintainer; **must be
-  re-verified on other hosts (clean VM / physical machine) before relying on
-  it**, since it contradicts the Stage 14/15 spawn test-locks (fake-process
-  harness there, real spawn here).
+- **F-2 — Packaged app cannot spawn adb on this host.** RESOLVED 2026-10-23
+  (see `F2_ADB_LAUNCH_INVESTIGATION.md`): the saved path was the
+  platform-tools *directory*, and every ADB launch path spawned that raw
+  path; Windows refuses to CreateProcess a directory with
+  `PermissionError`/`WinError 5` — deterministic OS behavior, reproduced
+  standalone, no AV/packaging involvement (the earlier "host-environment"
+  hypothesis is refuted). Fixed by resolving a directory-shaped saved path
+  to its `platform-tools\adb.exe` executable at the engine's single launch
+  choke points, plus typed (never raw) process-creation failures; regression
+  tests landed and a new release-candidate build was produced and validated
+  against the real configuration on this host (installed exe hash-identical
+  to the candidate exe `cbdf5b67c065ee474d3cd33555367715f6c7c69c8513cdb0…`,
+  Dashboard probe **OK — validated**, device discovery **OK — 1 device(s)
+  reported**). Candidate installer
+  `1a9f315f5ee6e70f933908fcd8a58530613b3c574988c0bc61bcc2658459e5cb`. The
+  Stage 14 artifacts do not contain the fix — publication must point at the
+  candidate hashes (full values in `F2_ADB_LAUNCH_INVESTIGATION.md` §8).
 - **F-3 — Intermittent GUI-thread delivery test flake.** Reproduced, ledgered
   and fixed at the observer-shape level; residual uncertainty is only the
   unproven PySide6-internal mechanism (§6). Owner: QA maintainer; recommended
@@ -297,16 +302,17 @@ not something to invent here.**
 ## 12. Shortest safe path to a real release
 
 In dependency order: (1) maintainer decisions — LICENSE file, acceptance of
-the unsigned/staged pre-release semantics, Win10 in-or-out of scope, F-2
-treatment; (2) F-2 re-verification cross-host and either a fix or a documented
-limitation; (3) one independent review pass over
-`WINDOWS_INSTALLATION.md` + release notes draft + `RELEASE_CHECKLIST.md`;
-(4) optional hardening: CI + clean-runner recompile from
-`requirements-lock.txt` + license inventory; (5) tag + GitHub Release + upload
-under explicit authorization, with hashes re-checked at publication time
-against the published files, checklist items #12–#14 flipped to their final
-statuses by the release owner. Until then, the Stage 16 boundary statement
-stands: **no publication assets may be created without separate authorization.**
+the unsigned/staged pre-release semantics, Win10 in-or-out of scope; (2)
+publication points at the **F-2-fix candidate build** (not the historical
+Stage 14 artifacts — see `F2_ADB_LAUNCH_INVESTIGATION.md` §8); (3) one
+independent review pass over `WINDOWS_INSTALLATION.md` + release notes draft
++ `RELEASE_CHECKLIST.md`; (4) optional hardening: CI + clean-runner recompile
+from `requirements-lock.txt` + license inventory; (5) tag + GitHub Release +
+upload under explicit authorization, with hashes re-checked at publication
+time against the published files, checklist items #12–#14 flipped to their
+final statuses by the release owner. Until then, the Stage 16 boundary
+statement stands: **no publication assets may be created without separate
+authorization.**
 
 ## 13. Evidence index (this phase)
 
