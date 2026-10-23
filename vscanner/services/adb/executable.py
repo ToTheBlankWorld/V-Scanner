@@ -7,6 +7,7 @@ delegate to these functions, eliminating the previously-shadowed duplicates.
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -17,12 +18,33 @@ from vscanner.core.errors import AdbNotAvailable
 __all__ = [
     "check_adb_valid",
     "resolve_adb_path",
+    "resolve_adb_launch_path",
     "SYSTEM_ADB_NAME",
 ]
 
 SYSTEM_ADB_NAME = "adb"
 _VALIDATION_TIMEOUT: float = 5.0
 _VERSION_ARG = "version"
+
+
+def resolve_adb_launch_path(adb_path: str) -> str:
+    """Resolve a possibly directory-shaped saved path to the launch target.
+
+    The host convention every user encounters (and that ``provisioning``
+    encodes: ``tools_dir / "platform-tools" / adb.exe``) is a *directory*
+    containing the adb executable. Windows refuses to CreateProcess a
+    directory — it raises ``PermissionError``/``WinError 5`` "Access is
+    denied", which is exactly the observed F-2 packaged-app discovery
+    failure. One authoritative resolution here (itself executed by
+    ``check_adb_valid`` and every client spawn, both validated below):
+    a directory resolves to its platform adb executable name; anything
+    that is not a directory passes through unchanged so existing missing/
+    non-executable paths keep their honest downstream failures.
+    """
+    candidate = Path(adb_path)
+    if candidate.is_dir():
+        return str(candidate / ("adb.exe" if os.name == "nt" else "adb"))
+    return adb_path
 
 
 class _Saver(Protocol):
@@ -45,11 +67,12 @@ def check_adb_valid(adb_path: str) -> bool:
     """
     if not adb_path:
         return False
-    if not Path(adb_path).exists():
+    launch_target = resolve_adb_launch_path(adb_path)
+    if not Path(launch_target).exists():
         return False
     try:
         result = subprocess.run(
-            [adb_path, _VERSION_ARG],
+            [launch_target, _VERSION_ARG],
             capture_output=True,
             timeout=_VALIDATION_TIMEOUT,
             check=False,

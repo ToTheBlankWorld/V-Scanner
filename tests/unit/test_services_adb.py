@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import shutil
 import subprocess
 import sys
 import textwrap
@@ -13,6 +15,7 @@ from vscanner.core.models import DeviceState
 from vscanner.services.adb.client import SubprocessAdbClient, build_adb_command
 from vscanner.services.adb.devices import parse_adb_devices_output, actionable_serials, DeviceDiscoveryService
 from vscanner.services.adb.device_info import DeviceInfoService
+from vscanner.services.adb.executable import check_adb_valid, resolve_adb_launch_path
 from vscanner.services.registry import ServiceRegistry
 
 
@@ -121,6 +124,110 @@ class TestSubprocessAdbClientByteSafety:
 
         err = ACE(cmd=("getprop",), stderr_excerpt="psk=hunter2 leaked")
         assert "hunter2" not in err.stderr_excerpt
+
+
+class TestDirectoryShapedAdbPath:
+    """F-2 regression: the saved path may be the *platform-tools directory*
+    containing the executable (the exact user input that reached the packaged
+    app). Windows refuses to CreateProcess a directory — PermissionError
+    [WinError 5] "Access is denied" — which made discovery fail and the
+    dashboard probe report the honest-but-not-launchable state. Every launch
+    path now resolves a directory to its platform adb executable first.
+    """
+
+    def _tools_dir(self, tmp_path, with_executable: bool):
+        tools = tmp_path / "platform-tools"
+        tools.mkdir()
+        if with_executable:
+            shutil.copyfile(sys.executable, tools / self._exe_name())
+        return tools
+
+    @staticmethod
+    def _exe_name() -> str:
+        return "adb.exe" if os.name == "nt" else "adb"
+
+    def test_resolve_semantics(self, tmp_path):
+        tools = self._tools_dir(tmp_path, with_executable=False)
+        # directory-shaped: resolves to the platform executable name inside
+        assert resolve_adb_launch_path(str(tools)) == str(tools / self._exe_name())
+        # file-shaped or absent: passes through unchanged (honest failures
+        # downstream stay exactly as they were)
+        probe_file = tmp_path / "somefile"
+        probe_file.touch()
+        assert resolve_adb_launch_path(str(probe_file)) == str(probe_file)
+        assert resolve_adb_launch_path(
+            "definitely/not/adb") == "definitely/not/adb"
+
+    def test_validation_probe_resolves_directory_before_spawning(
+            self, tmp_path, monkeypatch):
+        # the exe file must exist so the pre-spawn check passes; its bytes
+        # are irrelevant because the subprocess itself is faked
+        tools = self._tools_dir(tmp_path, with_executable=True)
+        captured: dict = {}
+
+        def fake_run(argv, **kwargs):
+            captured["argv"] = argv
+            return subprocess.CompletedProcess(argv, 0)
+
+        monkeypatch.setattr(subprocess, "run", fake_run)
+        assert check_adb_valid(str(tools)) is True
+        assert captured["argv"][0] == str(tools / self._exe_name())
+
+    def test_validation_missing_executable_still_false(self, tmp_path):
+        tools = self._tools_dir(tmp_path, with_executable=False)
+        # the directory exists but contains no adb executable — the probe
+        # targets the (non-existent) resolved launch path → honest False
+        assert check_adb_valid(str(tools)) is False
+        assert check_adb_valid(str(tmp_path / "no-such-path")) is False
+        assert check_adb_valid("") is False
+
+    def test_client_launches_the_resolved_executable_for_real(
+            self, tmp_path):
+        # REAL child process: a directory-shaped path whose adb.exe is a
+        # genuine (copied) interpreter proves the resolution end-to-end
+        tools = self._tools_dir(tmp_path, with_executable=True)
+        client = SubprocessAdbClient(adb_path=str(tools))
+        assert client.adb_path == str(tools / self._exe_name())
+        result = client.run_text(["-c", "import sys; sys.exit(0)"])
+        assert result.returncode == 0
+
+    def test_spaced_and_non_ascii_directory_launches(self, tmp_path):
+        tools = tmp_path / "ADB Tools — café élex 平台工具"
+        tools.mkdir()
+        shutil.copyfile(sys.executable, tools / self._exe_name())
+        client = SubprocessAdbClient(adb_path=str(tools))
+        assert client.run_text(
+            ["-c", "import sys; sys.exit(0)"]).returncode == 0
+
+    def test_directory_without_executable_failure_is_typed_not_raw(
+            self, tmp_path):
+        # the raw behavior before the fix: real CreateProcess on the
+        # directory raises PermissionError [WinError 5] that reached UI
+        # banners verbatim; now it maps to the typed honest failure
+        tools = self._tools_dir(tmp_path, with_executable=False)
+        client = SubprocessAdbClient(adb_path=str(tools))
+        with pytest.raises(AdbNotAvailable):
+            client.run_text(["devices"])
+        with pytest.raises(AdbNotAvailable):
+            client.run_bytes(["version"])
+
+    def test_permission_error_maps_to_typed_not_available(
+            self, monkeypatch):
+        def boom(*args, **kwargs):
+            raise PermissionError(5, "Access is denied")
+
+        monkeypatch.setattr(subprocess, "run", boom)
+        client = SubprocessAdbClient(adb_path="some/locked/adb.exe")
+        with pytest.raises(AdbNotAvailable):
+            client.run_text(["devices"])
+        with pytest.raises(AdbNotAvailable):
+            client.run_bytes(["version"])
+
+    def test_build_adb_command_resolves_directory(self, tmp_path):
+        tools = tmp_path / "platform-tools"
+        tools.mkdir()
+        assert build_adb_command(
+            str(tools), ["devices"]) == [str(tools / self._exe_name()), "devices"]
 
 
 class FakeTransport:
