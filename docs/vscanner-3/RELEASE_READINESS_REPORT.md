@@ -219,15 +219,23 @@ prefix `D343B546387170C3…`) with stable content including the saved `adb_path`
 
 ## 8. Findings (with owners)
 
-- **F-1 — Doctor's frozen-runtime dependency honesty is misleading.** In the
-  packaged exe, the rich/click dependencies report "installed" but the Doctor
-  view reports rich/click as "NOT INSTALLED" while the same page shows jinja2
-  as installed — frozen executables expose no package metadata, so the Doctor
-  check's importlib-metadata probe blind-spots. Its "pip install -e ."
-  instruction is also meaningless inside a packaged exe (there is no project
-  to install). Cosmetic honesty defect of a diagnostics screen; no functional
-  impact on scanning/monitoring. Owner: packaging maintainer (make the
-  packaged build embed the truth, or detect the frozen state and say so).
+- **F-1 — Doctor's frozen-runtime dependency honesty is misleading.**
+  RESOLVED 2026-10-23 (see `F1_DIAGNOSTICS_INVESTIGATION.md`): the packaged
+  Doctor/Dashboard panels had rendered a source-environment verdict —
+  rich/click as a failing "NOT INSTALLED" plus a `pip install -e .`
+  remediation — while the desktop executable is complete by design without
+  the CLI-surface packages (`jinja2` is its only third-party runtime
+  import). Fixed by making the frozen state explicit (Nuitka `__compiled__`
+  detection — empirically verified; Nuitka does not set `sys.frozen`),
+  probing packages through the real import machinery in frozen builds,
+  judging the status chip only on desktop-required packages, and providing
+  truthful actionable text ("Broken build — rebuild") when a required
+  package is genuinely absent. Regression tests (failing-first) at both
+  the service and desktop layers; source-mode semantics locked unchanged;
+  a new candidate build was validated at the installed layer on this host.
+  The historical Stage 14 artifacts and the F-2 candidate do not contain
+  this fix — publication must point at the newest validated candidate
+  hashes.
 - **F-2 — Packaged app cannot spawn adb on this host.** RESOLVED 2026-10-23
   (see `F2_ADB_LAUNCH_INVESTIGATION.md`): the saved path was the
   platform-tools *directory*, and every ADB launch path spawned that raw
