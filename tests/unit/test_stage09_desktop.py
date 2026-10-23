@@ -382,6 +382,117 @@ class TestSettingsPersistence:
 # ---------------------------------------------------------------------------
 
 @pytest.mark.skipif(not QT_AVAILABLE, reason="PySide6 not installed")
+class TestDoctorFrozenHonesty:
+    """F-1: the packaged (frozen) Doctor must not report a
+    source-environment failure (absent CLI packages, ``pip`` remediation)
+    that does not apply to the packaged executable; required packages
+    missing from the build must remain an honest actionable error."""
+
+    @staticmethod
+    def _frozen_report(jinja2_present: bool = True):
+        from vscanner.services.doctor import (
+            DependencyReport, PackageStatus,
+        )
+        return DependencyReport(
+            python_version="3.12.10",
+            packages=(
+                PackageStatus(name="rich", installed=False),
+                PackageStatus(name="click", installed=False),
+                PackageStatus(name="jinja2", installed=jinja2_present),
+            ),
+            notes=(),
+        )
+
+    # -- source mode semantics preserved ----------------------------------- #
+
+    def test_source_doctor_all_present_is_ok_without_pip_hint(self, qapp):
+        from ui_desktop.screens.doctor import build_doctor
+        page = build_doctor()
+        texts = " ".join(_all_label_texts(page))
+        assert "3 of 3 packages present" in texts
+        assert "pip install -e" not in texts
+
+    def test_source_doctor_missing_package_keeps_reinstall_hint(
+            self, qapp, monkeypatch):
+        from ui_desktop.screens.doctor import build_doctor
+        from vscanner.services.doctor import DependencyReport, PackageStatus
+        import ui_desktop.screens.doctor as screen_mod
+
+        def report():
+            return DependencyReport(
+                python_version="3.12.10",
+                packages=(PackageStatus(name="jinja2", installed=False),),
+                notes=(),
+            )
+
+        monkeypatch.setattr(screen_mod, "collect_dependency_report", report)
+        page = build_doctor()
+        texts = " ".join(_all_label_texts(page))
+        assert "pip install -e" in texts  # source user CAN reinstall
+
+    # -- frozen (packaged) mode speaks the frozen truth -------------------- #
+
+    def test_frozen_doctor_is_not_a_failure_when_cli_packages_absent(
+            self, qapp, monkeypatch):
+        from ui_desktop.screens.doctor import build_doctor
+        import ui_desktop.screens.doctor as screen_mod
+
+        monkeypatch.setattr(
+            screen_mod, "collect_dependency_report",
+            lambda: self._frozen_report())
+        monkeypatch.setattr(screen_mod, "is_frozen", lambda: True)
+        page = build_doctor()
+        texts = " ".join(_all_label_texts(page))
+        # frozen state made explicit; per-row truth replaces the verdict
+        # (rich/click absent by design; jinja2 compiled in -> 1 of 3)
+        assert "packaged build - 1 of 3 compiled in" in texts
+        assert "not part of this packaged build" in texts
+        assert "NOT INSTALLED" not in texts
+        assert "pip install -e" not in texts
+
+    def test_frozen_doctor_required_package_missing_is_actionable(
+            self, qapp, monkeypatch):
+        from ui_desktop.screens.doctor import build_doctor
+        import ui_desktop.screens.doctor as screen_mod
+
+        monkeypatch.setattr(
+            screen_mod, "collect_dependency_report",
+            lambda: self._frozen_report(jinja2_present=False))
+        monkeypatch.setattr(screen_mod, "is_frozen", lambda: True)
+        page = build_doctor()
+        texts = " ".join(_all_label_texts(page))
+        assert "Broken build" in texts
+        assert "rebuild" in texts
+
+    def test_frozen_dashboard_panel_reports_frozen_truth(
+            self, qapp, config_service, monkeypatch):
+        import ui_desktop.screens.dashboard as dash_mod
+        from ui_desktop.screens.dashboard import build_dashboard
+
+        monkeypatch.setattr(
+            dash_mod, "collect_dependency_report",
+            lambda: self._frozen_report())
+        monkeypatch.setattr(dash_mod, "is_frozen", lambda: True)
+        page = build_dashboard(config_service, adb_probe=lambda p: True)
+        texts = " ".join(_all_label_texts(page))
+        assert "packaged build - 1 of 3 compiled in" in texts
+        assert "reinstall the engine environment" not in texts
+        assert "not part of this packaged build" in texts
+
+    def test_frozen_dashboard_required_missing_stays_honest(
+            self, qapp, config_service, monkeypatch):
+        import ui_desktop.screens.dashboard as dash_mod
+        from ui_desktop.screens.dashboard import build_dashboard
+
+        monkeypatch.setattr(
+            dash_mod, "collect_dependency_report",
+            lambda: self._frozen_report(jinja2_present=False))
+        monkeypatch.setattr(dash_mod, "is_frozen", lambda: True)
+        page = build_dashboard(config_service, adb_probe=lambda p: True)
+        texts = " ".join(_all_label_texts(page))
+        assert "Broken build" in texts
+
+
 class TestQtJobBridge:
     def test_bridge_delivers_events_on_the_gui_thread(self, qapp):
         bridge = QtJobEventBridge()

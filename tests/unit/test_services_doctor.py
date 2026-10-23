@@ -6,6 +6,7 @@ import pytest
 
 from vscanner.core.models import ToolId, ToolState, ToolStatusReflected
 from vscanner.services.doctor import (
+    DESKTOP_REQUIRED_PACKAGES,
     RUNTIME_PACKAGES,
     PackageStatus,
     check_tool_status,
@@ -58,6 +59,66 @@ class TestToolStatusReflection:
         report = collect_dependency_report(tools_service=None)
         assert report.tools == ()
         assert report.all_packages_present
+
+
+class TestFrozenRuntimeHonesty:
+    """F-1: in a packaged (frozen) build ``find_spec`` can report absent
+    for packages compiled into the executable (no importlib metadata for
+    the frozen importer); the frozen probe must go through the real
+    import machinery and the report must make the frozen state explicit."""
+
+    def test_source_runs_are_not_frozen(self):
+        # pytest always executes from source; this pins the source-mode
+        # probe semantics (find_spec) existence of the frozen branch.
+        from vscanner.services.doctor import is_frozen
+
+        assert is_frozen() is False
+
+    def test_desktop_required_packages_matches_engine_truth(self):
+        # F-1 truth embed: the desktop packaged surface's only third-party
+        # runtime import is jinja2 (reports); rich/click serve the CLI.
+        assert DESKTOP_REQUIRED_PACKAGES == ("jinja2",)
+
+    def test_frozen_probe_uses_the_real_import_machinery(
+            self, monkeypatch):
+        import importlib
+
+        import vscanner.services.doctor as doctor_mod
+        probed: list = []
+        real_import = importlib.import_module
+
+        def fake_import(name, *args, **kwargs):
+            probed.append(name)
+            if name in ("rich", "click"):
+                # simulated Nuitka frozen importer: not compiled into the
+                # desktop executable at all
+                raise ModuleNotFoundError(f"No module named {name!r}")
+            return real_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(importlib, "import_module", fake_import)
+        monkeypatch.setattr(doctor_mod, "is_frozen", lambda: True)
+        report = collect_dependency_report()
+        # the frozen probe went through the import machinery, not find_spec
+        assert set(probed) == set(RUNTIME_PACKAGES)
+        by_name = {p.name: p.installed for p in report.packages}
+        assert by_name == {"rich": False, "click": False, "jinja2": True}
+
+    def test_frozen_report_explicitly_names_the_frozen_state(
+            self, monkeypatch):
+        import vscanner.services.doctor as doctor_mod
+
+        monkeypatch.setattr(doctor_mod, "is_frozen", lambda: True)
+        report = collect_dependency_report()
+        frozen_notes = [n for n in report.notes if "frozen" in n]
+        assert frozen_notes, report.notes
+
+    def test_frozen_mode_stays_report_only(self, monkeypatch):
+        # R-14 marker must survive every mode; no install side effects.
+        import vscanner.services.doctor as doctor_mod
+
+        monkeypatch.setattr(doctor_mod, "is_frozen", lambda: True)
+        report = collect_dependency_report()
+        assert any("report-only" in note for note in report.notes)
 
 
 class _FakeToolService:

@@ -35,7 +35,11 @@ from PySide6.QtWidgets import (
 
 from vscanner.services.adb.executable import check_adb_valid
 from vscanner.services.config import ConfigService
-from vscanner.services.doctor import collect_dependency_report
+from vscanner.services.doctor import (
+    DESKTOP_REQUIRED_PACKAGES,
+    collect_dependency_report,
+    is_frozen,
+)
 
 from .. import __version__
 from .. import theme
@@ -291,6 +295,58 @@ def _adb_panel(
 def _packages_panel() -> Panel:
     panel = Panel()
     layout = Panel.body_layout(panel)
+    frozen = is_frozen()
+    if frozen:
+        # F-1: a packaged executable contains exactly what its surface
+        # imports; source-environment verdicts (installed/"N of 3" with a
+        # reinstall hint) mislead here. Only the desktop-required packages
+        # (DESKTOP_REQUIRED_PACKAGES) judge the status.
+        report = collect_dependency_report()
+        missing = [p.name for p in report.packages if not p.installed]
+        required_missing = [n for n in DESKTOP_REQUIRED_PACKAGES
+                            if n in missing]
+        non_required = [n for n in missing
+                        if n not in DESKTOP_REQUIRED_PACKAGES]
+        total = len(report.packages)
+        present = total - len(missing)
+        _heading(layout, "Engine packages")
+        row = _row(layout)
+        row.addWidget(MetadataRow(
+            "Report", f"packaged build - {present} of {total} compiled in"))
+        row.addWidget(MetadataRow(
+            "Desktop toolkit", "PySide6 (Qt) available (compiled into "
+                               "this executable)" if _pyside_ok() else
+            "PySide6 not importable — broken packaged build"))
+        row.addWidget(MetadataRow("Desktop extra", "not applicable in a "
+                                                   "packaged build"
+                                  if _pyside_ok() else "missing"))
+        # Only a required package absent from the build is a failure.
+        row.addWidget(StatusChip("error" if required_missing else "ok"))
+        for package in report.packages:
+            state = ("compiled into this executable" if package.installed
+                     else "not part of this packaged build")
+            layout.addWidget(MetadataRow(
+                package.name, f"shared engine dependency - {state}"))
+        if required_missing:
+            hint = QLabel(
+                f"Broken build: {', '.join(required_missing)} must be "
+                "part of this packaged executable but is not importable "
+                "there — rebuild from the approved packaging pipeline. "
+                "The doctor is report-only — it never installs anything "
+                "(R-14).")
+            hint.setObjectName("hintText")
+            hint.setWordWrap(True)
+            layout.addWidget(hint)
+        elif non_required:
+            hint = QLabel(
+                f"{', '.join(non_required)} belong to the CLI surface "
+                "only; they are not part of this packaged desktop "
+                "executable by design - nothing to reinstall. The doctor "
+                "is report-only — it never installs anything (R-14).")
+            hint.setObjectName("hintText")
+            hint.setWordWrap(True)
+            layout.addWidget(hint)
+        return panel
     report = collect_dependency_report()
     missing = [p.name for p in report.packages if not p.installed]
     _heading(layout, "Engine packages")

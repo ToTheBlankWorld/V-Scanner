@@ -8,6 +8,7 @@ network access; ``importlib.util.find_spec`` is file-system metadata).
 
 from __future__ import annotations
 
+import importlib
 import importlib.util
 import platform
 import sys
@@ -17,11 +18,19 @@ from typing import Optional, Protocol, Tuple
 from vscanner.core.models import ToolId, ToolState, ToolStatusReflected
 
 __all__ = ["PackageStatus", "DependencyReport", "collect_dependency_report",
-           "check_tool_status"]
+           "check_tool_status", "is_frozen", "DESKTOP_REQUIRED_PACKAGES"]
 
 # The three proven runtime dependencies (grep-verified in Stage 00; the six
 # over-declared entries were removed from the dependency table this stage).
 RUNTIME_PACKAGES = ("rich", "click", "jinja2")
+
+# F-1 truth embed (grep-verifiable in this repository): the *desktop
+# packaged surface* (``vscanner`` + ``ui_desktop``, the two packages the
+# packaging pipeline compiles in) has exactly one third-party runtime
+# import — ``jinja2`` (reports). ``rich``/``click`` serve the CLI surface
+# only, so a packaged desktop executable that does not contain them is
+# complete by design, not broken.
+DESKTOP_REQUIRED_PACKAGES = ("jinja2",)
 
 _OWNED_TOOLS = (ToolId.ADB,)
 
@@ -55,6 +64,40 @@ def _package_installed(name: str) -> bool:
         return False  # broken namespace packages: report honestly as absent
 
 
+def _package_importable(name: str) -> bool:
+    """Frozen-build probe: resolve through the real import machinery.
+
+    A Nuitka-compiled package exposes no importlib metadata, so
+    ``find_spec`` blind-spots on packages that ARE part of the packaged
+    executable (and cannot distinguish them from genuinely absent ones) —
+    the observed F-1 mechanism. Importing the module through the frozen
+    importer is the direct, honest evidence of presence in the build:
+    ModuleNotFoundError means the package is not part of this executable.
+    """
+    try:
+        return importlib.import_module(name) is not None
+    except Exception:
+        return False
+
+
+def is_frozen() -> bool:
+    """Running as a compiled/packaged executable (Nuitka standalone).
+
+    Nuitka deliberately does *not* set ``sys.frozen``; its documented
+    run-time detection is the module-level ``__compiled__`` marker the
+    compiler injects into every compiled module (Nuitka README,
+    "Detecting Nuitka at run time"). Verified empirically through the
+    packaged candidate: source-run ⇒ False, compiled exe ⇒ True.
+    """
+    return "__compiled__" in globals()
+
+
+_FROZEN_NOTE = (
+    "packaged (frozen) build: runtime packages are compiled into the "
+    "executable — source-environment package statuses do not apply"
+)
+
+
 class _ToolStatusService(Protocol):
     """Shape of the provisioning service the doctor reflects statuses from."""
 
@@ -86,7 +129,10 @@ def collect_dependency_report(
     (an adb probe then shows the honest NOT_FOUND state).
     """
     packages = tuple(
-        PackageStatus(name=name, installed=_package_installed(name))
+        PackageStatus(
+            name=name,
+            installed=(_package_importable(name) if is_frozen()
+                       else _package_installed(name)))
         for name in RUNTIME_PACKAGES
     )
     tools: Tuple[ToolStatusReflected, ...] = ()
@@ -94,6 +140,8 @@ def collect_dependency_report(
         tools = tuple(check_tool_status(t, tools_service) for t in _OWNED_TOOLS)
 
     notes = list(extra_notes)
+    if is_frozen():
+        notes.append(_FROZEN_NOTE)
     notes.append("doctor is report-only: installs happen only by explicit user action")
     return DependencyReport(
         python_version=f"{platform.python_implementation()} {sys.version.splitlines()[0].strip()}",
